@@ -1,0 +1,76 @@
+# Stage 1 art direction. Every block carries a one-line `why` tied to the brief or a reference.
+# Lengths < 1 are fractions of the frame's short side; >= 1 are pixels at final resolution.
+meta:
+  name: ""
+  style_ref: custom          # library style used as a starting point, or "custom"
+format:
+  aspect: "16:9"
+  fps: 30
+  duration: 20
+  platform: ""
+palette:                     # roles, not just colours. Add roles as needed (surface, accent_2, data_1...)
+  bg:      {value: "#000000", why: ""}
+  surface: {value: "#000000", why: ""}
+  text:    {value: "#FFFFFF", why: ""}
+  muted:   {value: "#888888", why: ""}
+  accent:  {value: "#FF0000", why: ""}
+type:
+  scale: {base: 0.032, ratio: 1.25, why: ""}     # size(step) = base * short_side * ratio^step
+  roles:
+    display: {family: "", weight: 700, step: 4, line_height: 1.05, tracking: -0.01, why: ""}
+    title:   {family: "", weight: 600, step: 2, line_height: 1.1, why: ""}
+    body:    {family: "", weight: 400, step: 0, line_height: 1.3, why: ""}
+    caption: {family: "", weight: 600, step: -1, tracking: 0.06, case: upper, why: ""}
+grid:
+  columns: 12
+  margin: 0.08               # >= 0.08: the QA safe area
+  gutter: 0.02
+  why: ""
+shape:
+  radius: 0.012
+  stroke: 0.003
+  why: ""
+light:                       # art_direction.md 5b: a frame without a light logic reads as a UI screenshot
+  key: {from: top-left, color: "#FFFFFF", intensity: 0.3}   # KeyLight pool; it may travel with the camera
+  ground: ""                 # what the light falls on: dark gradient, paper white, a surface
+  shadows: soft              # soft (SoftShadow: contact + ambient) | none | hard (only with a reason)
+  depth_of_field: {aperture: 0, focus: 0}                     # camera.dof(); 0 = all sharp
+  accent_lives_in: ""        # where the saturated accent is spent: the moving element, the key word, the light
+  why: ""
+motion:
+  tempo: medium              # calm | medium | fast  (scales default durations)
+  easing:                    # character of movement
+    enter: out_expo
+    exit: in_cubic
+    move: in_out_cubic
+    emphasis: out_back
+    transition: in_out_cubic
+  durations: {micro: 0.18, short: 0.35, medium: 0.6, long: 1.1}
+  stagger: 0.04
+  transitions: [cut, push, wipe]
+  why: ""
+dynamics:                    # QA measures the render against these (references/motion.md)
+  hit_interval: 1.0          # median s between visual hits
+  max_still: 1.2             # longest frozen stretch, s
+  static_max: 0.12           # share of static frames
+  max_hold: 0.9              # longest stretch where no element animates (a camera glide alone does not count)
+  camera: {mode: glide, push: 1.05, travel: 0.45}   # glide | travel | follow; never wobble (motion.md section 2)
+  grammar: []                # the 4-6 moves this video is built from
+  why: ""
+fx:
+  enabled:                   # vignette: {strength: 0.3}; bloom; chroma; glitch; scanlines; grade
+    grain: {amount: 0.018, luma_weighted: true}   # on by default: kills banding in gradients, adds texture
+  forbidden: []              # fx / easing families / transitions / layer kinds this style must never use
+  why: ""
+sound:
+  voice: null                # assets/voice.wav: the user's voice-over leads the mix (best option)
+  track: null                # assets/music.mp3: the user's licensed track replaces the synthesized bed
+  genre: minimal             # synthesized bed: minimal | ambient | electronic | cinematic | lofi | corporate | playful | piano | terminal
+  bpm: 100
+  beat_offset: 0.0
+  key: "A minor"
+  timbres: []
+  sfx: []
+  max_sfx_per_s: 1.0         # sound follows the pulse, not every event
+  loudness: -14
+  why: ""

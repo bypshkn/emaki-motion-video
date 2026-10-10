@@ -1,0 +1,60 @@
+# Editorial (light): a printed magazine spread that moves. Example style, not a default.
+meta:
+  name: Editorial Light
+  style_ref: editorial
+format:
+  aspect: "16:9"
+  fps: 30
+  duration: 45
+  platform: youtube
+palette:
+  bg:      {value: "#F3EFE6", why: "Warm uncoated-paper white: calm, premium, easy on the eyes for long reads"}
+  surface: {value: "#FBF9F4", why: "Lifted card/paper sheet one step lighter than the page"}
+  text:    {value: "#1B1A17", why: "Warm ink black; 15:1 on the paper"}
+  muted:   {value: "#6E685D", why: "Captions and kickers; 5.0:1 on the paper, still readable"}
+  rule:    {value: "#CFC7B8", why: "Hairline rules and grid marks"}
+  accent:  {value: "#B03A22", why: "One deep vermilion accent for marks, highlights and accent words (5.3:1 on paper): the only saturated colour"}
+  accent_2: {value: "#2F4A3A", why: "Deep green for secondary data or a second voice; used sparingly"}
+type:
+  scale: {base: 0.03, ratio: 1.333, why: "Perfect-fourth scale: big contrast between headline and body, like print"}
+  roles:
+    display: {family: "Lora", weight: 600, step: 4, line_height: 1.04, tracking: -0.015, why: "Serif headline carries the editorial voice; tight leading like a magazine deck"}
+    title:   {family: "Lora", weight: 500, step: 2, line_height: 1.1, why: "Section titles in the same serif, lighter"}
+    quote:   {family: "Lora", weight: 400, italic: true, step: 2, line_height: 1.2, why: "Pull quotes in italic serif"}
+    body:    {family: "Lato", weight: 400, step: 0, line_height: 1.35, why: "Neutral sans for supporting lines, contrasts the serif"}
+    caption: {family: "Lato", weight: 700, step: -1, tracking: 0.12, case: upper, why: "Spaced small caps kickers: section labels, numbers, sources"}
+    number:  {family: "Lora", weight: 600, step: 6, line_height: 1.0, tracking: -0.03, features: {lnum: true}, why: "Oversized serif numerals as graphic elements"}
+grid:
+  columns: 12
+  margin: 0.09
+  gutter: 0.02
+  why: "Generous margins and a 12-column grid: asymmetric layouts (text on 7 columns, air on 5)"
+shape:
+  radius: 0.0
+  stroke: 0.0018
+  why: "Square corners and hairline rules, as in print"
+motion:
+  tempo: calm
+  easing:
+    enter: out_expo
+    exit: in_cubic
+    move: in_out_quart
+    emphasis: out_quint
+    transition: in_out_quart
+  durations: {micro: 0.2, short: 0.45, medium: 0.8, long: 1.3}
+  stagger: 0.06
+  transitions: [cut, wipe, slide, dip]
+  why: "Calm, confident motion: long decelerations, no overshoot. Lines rise from under a mask like turning pages."
+fx:
+  enabled:
+    grain: {amount: 0.018, size: 1.2}
+  forbidden: [glitch, chroma, scanlines, bloom, particles, bounce, elastic, spring, back, zoom, iris, scramble, typewriter]
+  why: "Paper grain only. Anything digital, bouncy or flashy breaks the print metaphor."
+sound:
+  genre: piano editorial
+  bpm: 84
+  key: "F major"
+  timbres: [felt piano, warm pad]
+  sfx: [paper swish on wipes, soft tick on numbers]
+  loudness: -14
+  why: "Felt piano at a walking tempo: thoughtful, unobtrusive under reading"

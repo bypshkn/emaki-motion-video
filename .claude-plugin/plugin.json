@@ -1,0 +1,13 @@
+{
+  "name": "emaki",
+  "version": "1.0.0",
+  "description": "Motion video, drawn entirely in code: short promo, explainer and product videos rendered by a Python engine, with two approval gates, automated QA and an independent critic. Output: mp4 or an After Effects project.",
+  "author": {
+    "name": "Anton Pushkin (PSHKN)",
+    "url": "https://github.com/bypshkn"
+  },
+  "homepage": "https://github.com/bypshkn/emaki",
+  "repository": "https://github.com/bypshkn/emaki",
+  "license": "MIT",
+  "keywords": ["motion design", "video", "animation", "kinetic typography", "after effects", "skia", "ffmpeg"]
+}

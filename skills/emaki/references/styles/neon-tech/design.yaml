@@ -1,0 +1,73 @@
+# Neon tech: a dark grid world where light writes the story. Derived from a reference reel
+# (techniques only, not its content). Example style, not a default.
+meta:
+  name: Neon Tech
+  style_ref: neon-tech
+  concept: "A dark studio grid where a point of light writes every word, draws every connector and flies the camera; big heavy words slam on the beat, small technical labels annotate everything."
+format:
+  aspect: "9:16"
+  fps: 30
+  duration: 30
+  platform: reels
+palette:
+  bg:       {value: "#07050D", why: "near-black violet: light needs darkness to read as light"}
+  surface:  {value: "#120E1F", why: "panels and cards one step above the void"}
+  text:     {value: "#F4F1FF", why: "cool white copy, 18:1 on bg"}
+  muted:    {value: "#8E87A8", why: "technical labels, rulers, captions; 6:1 on bg"}
+  grid:     {value: "#2A2340", why: "the grid world: visible, never competing"}
+  accent:   {value: "#8B5CFF", why: "electric violet: the light, the glow, the key word"}
+  accent_2: {value: "#D58CFF", why: "pink-violet for gradients and secondary glow"}
+  flash:    {value: "#E7B9FF", why: "pink full-frame flash behind word slams"}
+  ink:      {value: "#14082E", why: "dark ink for words on flash frames (15:1 on flash)"}
+type:
+  scale: {base: 0.03, ratio: 1.333, why: "big jumps between huge slams and tiny labels"}
+  roles:
+    display: {family: "Lato", weight: 900, step: 6, line_height: 0.92, tracking: -0.025, case: upper, why: "heavy caps that fill the frame (Unbounded / Druk Wide recommended)"}
+    title:   {family: "Lato", weight: 900, step: 3, line_height: 1.0, tracking: -0.015, why: "section statements"}
+    body:    {family: "Lato", weight: 700, step: 0, line_height: 1.25, why: "spoken lines"}
+    light:   {family: "Lato", weight: 300, step: 3, line_height: 1.1, why: "thin hand-written words drawn by the light"}
+    label:   {family: "Noto Sans Mono", weight: 400, step: -2, tracking: 0.04, why: "technical annotations: rulers, values, ids"}
+grid:
+  columns: 6
+  margin: 0.08
+  gutter: 0.02
+  why: "a 6-column phone grid; the grid floor itself is decor and may bleed"
+shape:
+  radius: 0.01
+  stroke: 0.002
+  why: "hairline panels and connectors like a schematic"
+motion:
+  tempo: fast
+  easing:
+    enter: out_expo
+    exit: in_expo
+    move: in_out_expo
+    emphasis: out_back(1.6)
+    transition: in_out_expo
+  durations: {micro: 0.12, short: 0.25, medium: 0.45, long: 0.8}
+  stagger: 0.03
+  transitions: [whip, flash, scale_through, glitch, cut]
+  why: "snappy expo curves, every hit on the beat, transitions are fast moves, never fades"
+dynamics:
+  hit_interval: 0.75
+  max_still: 0.6
+  static_max: 0.05
+  camera: {mode: travel, push: 1.06, travel: 0.35, tilt: 2.5}
+  grammar: [light nib writes words and draws connectors, word slams on beats with flash frames, whip and scale-through transitions, perspective panels and grid floor, echo trails on slams, smear on fast moves]
+  why: "the reference changes something every ~0.7 s and is never still for more than half a second"
+fx:
+  enabled:
+    bloom: {threshold: 0.72, intensity: 0.8, radius: 0.03}
+    vignette: {strength: 0.4}
+    grain: {amount: 0.012}
+    glitch: {track_only: true, split: 16, slices: 5}
+  forbidden: [bounce, elastic, iris, dip, blur, typewriter]
+  why: "light blooms, the edges fall into darkness, glitches only as punctuation"
+sound:
+  genre: electronic
+  bpm: 120
+  key: "F minor"
+  timbres: [saw pad, synth bass, arp]
+  sfx: [whoosh on whips, impact on slams, tick on labels, glitch on glitch pulses]
+  loudness: -14
+  why: "a driving 120 BPM pulse: half-beat hits at 0.25 s, word slams on beats"

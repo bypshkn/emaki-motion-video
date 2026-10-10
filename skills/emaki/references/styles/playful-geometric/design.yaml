@@ -1,0 +1,59 @@
+# Playful geometric: bold primaries, bouncy shapes, friendly type. Example style, not a default.
+meta:
+  name: Playful Geometric
+  style_ref: playful-geometric
+format:
+  aspect: "9:16"
+  fps: 30
+  duration: 20
+  platform: reels
+palette:
+  bg:       {value: "#FFF4E2", why: "Cream background: warmer and softer than white, makes primaries glow"}
+  text:     {value: "#1D1B26", why: "Ink navy-black, 16:1 on cream"}
+  muted:    {value: "#6B6577", why: "Secondary lines; 5.3:1 on cream"}
+  accent:   {value: "#FF5A36", why: "Tomato: energy, the main shape colour (2.9:1 on cream: shapes only, not text)"}
+  accent_text: {value: "#B8321A", why: "Darker tomato for *accent* words in copy: 5:1 on cream"}
+  accent_2: {value: "#2E5BFF", why: "Electric blue for the second shape family"}
+  accent_3: {value: "#FFC23D", why: "Sunny yellow for small accents (never under white text)"}
+  accent_4: {value: "#16B47E", why: "Mint for success states"}
+  surface:  {value: "#FFFFFF", why: "Cards and stickers"}
+type:
+  scale: {base: 0.036, ratio: 1.333, why: "Large base size: short punchy copy, read on phones"}
+  roles:
+    display: {family: "URW Gothic", weight: 700, step: 4, line_height: 0.98, tracking: -0.02, why: "Round geometric letters echo the circles and squares"}
+    title:   {family: "URW Gothic", weight: 700, step: 2, line_height: 1.05, why: "Same geometric voice for titles"}
+    body:    {family: "Lato", weight: 700, step: 0, line_height: 1.25, why: "Sturdy sans for supporting lines"}
+    caption: {family: "Lato", weight: 900, step: -1, tracking: 0.06, case: upper, why: "Sticker labels"}
+grid:
+  columns: 6
+  margin: 0.09
+  gutter: 0.03
+  why: "Simple 6-column grid; shapes may bleed off-frame, copy never does"
+shape:
+  radius: 0.04
+  stroke: 0.008
+  why: "Chunky radii and thick outlines: toy-like, friendly"
+motion:
+  tempo: fast
+  easing:
+    enter: "spring:wobbly"
+    exit: in_back
+    move: in_out_back
+    emphasis: "spring(260,14)"
+    transition: in_out_quart
+  durations: {micro: 0.15, short: 0.3, medium: 0.5, long: 0.9}
+  stagger: 0.05
+  transitions: [shape_wipe, push, iris, cut]
+  why: "Everything lands with a springy overshoot; shapes pop, squash and morph on the beat"
+fx:
+  enabled: {}
+  forbidden: [glitch, chroma, scanlines, grain, bloom, blur, vignette, typewriter, scramble]
+  why: "Flat, clean colour fields; no texture or lens effects"
+sound:
+  genre: playful
+  bpm: 118
+  key: "C major"
+  timbres: [marimba, pluck bass, claps]
+  sfx: [pop on shape entrances, swish on shape wipes, blip on taps]
+  loudness: -14
+  why: "Bouncy marimba groove at a lively tempo matches the spring easing"

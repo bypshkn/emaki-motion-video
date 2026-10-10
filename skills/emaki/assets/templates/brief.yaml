@@ -1,0 +1,21 @@
+# Stage 0 brief. Fill from the user's request; anything decided without the user -> [ASSUMPTION] in `assumptions`.
+topic: ""                 # what the video is about
+goal: ""                  # what the viewer should feel / do afterwards
+audience: ""              # who watches
+platform: ""              # reels | tiktok | shorts | youtube | linkedin | presentation | web | other
+duration: __DURATION__    # seconds, 10-120
+aspect: "__ASPECT__"      # 9:16 | 16:9 | 1:1 | 4:5
+fps: 30                   # 60 only on request
+language: en              # on-screen copy language, ISO 639-1 (en, uk, de, ...); fonts must cover it
+output: mp4               # mp4 | ae
+ae_version: null          # e.g. 24.0 when output = ae
+references: []            # screenshots / frames (paths in assets/), links, words like "Apple keynote", "Swiss style", "retro VHS"
+brand_sources: []         # site, screenshots, design system: art direction is taken from these
+texts: []                 # on-screen copy from the brief, VERBATIM. Never rewritten; split into lines in the storyboard only
+data: []                  # CSV/JSON files in data/ for charts and counters
+must_have: []             # explicit requirements
+assumptions: []           # "[ASSUMPTION] ..." for every decision taken without the user
+mode: full                # full (two gates) | sketch (quick style test: no gates, no critic, one preview)
+gate_1: false             # true when the user approves the concept, beat list and style frames
+gate_2: false             # true when the user approves the animatic and the sound
+approved: false           # true when both gates are pre-approved in the request: quote it here

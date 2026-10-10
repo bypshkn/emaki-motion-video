@@ -1,0 +1,69 @@
+# Terminal: a machine speaking. Derived from the 14 s terminal demo (tests/regression_terminal). Example style, not a default.
+meta:
+  name: Terminal
+  style_ref: terminal
+format:
+  aspect: "9:16"
+  fps: 30
+  duration: 14
+  platform: reels
+palette:
+  bg:       {value: "#060608", why: "Near-black screen from the demo (6,6,8); the text glows out of darkness"}
+  text:     {value: "#EBEBEB", why: "Copy at 235 grey like the demo: bright but softer than pure white"}
+  muted:    {value: "#46464C", why: "HUD grey (70,70,76). Decor only: role=decor texts are exempt from contrast"}
+  dim:      {value: "#37373C", why: "Session/context labels (55,55,60), quieter than the HUD"}
+  timecode: {value: "#5A5A60", why: "Center timecode (90,90,96): visible clock without competing with copy"}
+  rule:     {value: "#1E1E22", why: "Progress track (30,30,34)"}
+  progress: {value: "#8C8C96", why: "Progress fill (140,140,150)"}
+  accent:   {value: "#EBEBEB", why: "No colour accent: emphasis comes from motion and glitch, not hue"}
+type:
+  scale: {base: 0.0208, ratio: 1.25, why: "15 px HUD at 720 = 0.0208 of the short side"}
+  roles:
+    display:  {family: "DejaVu Sans", weight: 200, size: 0.0639, line_height: 1.522, why: "ExtraLight 46 px@720, 70 px line step: thin, calm machine voice"}
+    hud:      {family: "DejaVu Sans Mono", weight: 400, size: 0.0208, why: "Monospace HUD labels at the corners, as in the demo"}
+    timecode: {family: "DejaVu Sans Mono", weight: 400, size: 0.0278, why: "20 px@720 timecode in the middle"}
+grid:
+  columns: 6
+  margin: 0.0556
+  gutter: 0.02
+  why: "HUD labels (role=decor) sit 40 px@720 from the edges, closer than the 8% safe margin on purpose; copy starts at 110 px@720 (0.153 of width), inside it"
+shape:
+  radius: 0.0
+  stroke: 0.0014
+  why: "Hairlines only (1 px@720 = 1.5 px@1080), no rounded shapes"
+motion:
+  tempo: calm
+  easing:
+    enter: linear
+    exit: in_sine
+    move: in_out_sine
+    emphasis: linear
+  durations: {micro: 0.12, short: 0.35, medium: 0.5, long: 1.0}
+  stagger: 0.045
+  typewriter_cps: 22
+  scramble_run: 3
+  transitions: [cut, glitch]
+  why: "Typing at 22 cps with a 3-glyph scramble edge; lines fade in 0.35 s; glitch pulses mark every line edge"
+dynamics:
+  hit_interval: 3.4
+  max_still: 1.0
+  static_max: 0.1
+  camera: {mode: static}
+  grammar: [typing caret with a scramble edge, glitch pulse on every line edge, ticking HUD clocks, progress hairline]
+  why: "calm on purpose: the typing caret and the clocks keep it alive; big hits only at line changes"
+fx:
+  enabled:
+    scanlines: {period: 4.5, strength: 0.18}
+    grain: {amount: 0.0196}
+    glitch: {track_only: true, split: 21, slices: 4, region: [0.4375, 0.609], slice_h: [6, 33], slice_shift: 60}
+  forbidden: [bounce, elastic, spring, back, particles, bloom, iris, zoom, shape_wipe, pop, highlight]
+  why: "CRT texture (every 3rd row x0.82 at 720 px, sigma-5 grain) and RGB-split glitches at text edges. The demo's comment mentions a vignette, but its code never applies one, so it is off."
+sound:
+  genre: terminal drone
+  bpm: 70.588
+  beat_offset: 0.6
+  key: "A minor"
+  timbres: [detuned sine drone at 55 Hz, 880 Hz shimmer, key clicks, bit-crushed glitch bursts, sub hits]
+  sfx: [type click per character, glitch burst at every line edge, sub hit on the first and last line]
+  loudness: -14
+  why: "Line starts every 3.4 s = 4 beats at 70.588 BPM from 0.6 s, so typing, glitches and hits sit on the grid. The 880 Hz shimmer joins from the first scene with energy >= 0.5."

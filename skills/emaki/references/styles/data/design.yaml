@@ -1,0 +1,61 @@
+# Data: a precise dark dashboard that tells one number at a time. Example style, not a default.
+meta:
+  name: Data Dark
+  style_ref: data
+format:
+  aspect: "1:1"
+  fps: 30
+  duration: 60
+  platform: linkedin
+palette:
+  bg:      {value: "#0D1117", why: "Deep blue-black: charts and numbers pop, feels like a product dashboard"}
+  surface: {value: "#161B23", why: "Card surface one step up for chart panels"}
+  text:    {value: "#F2F4F7", why: "Near-white copy, 17:1 on bg"}
+  muted:   {value: "#8A94A6", why: "Axis labels, captions, secondary bars; 6:1 on bg"}
+  grid:    {value: "#262D38", why: "Gridlines that are present but quiet"}
+  accent:  {value: "#3DDC97", why: "Signal green for the hero metric and growth"}
+  accent_2: {value: "#5B8CFF", why: "Blue for the comparison series"}
+  warn:    {value: "#FF6B5B", why: "Red only for declines or risks"}
+type:
+  scale: {base: 0.03, ratio: 1.25, why: "Major-third scale keeps labels small and numbers big"}
+  roles:
+    display: {family: "Lato", weight: 900, step: 5, line_height: 1.0, tracking: -0.02, features: {tnum: true}, why: "Heavy numerals for hero metrics; tabular so counters don't jitter"}
+    title:   {family: "Lato", weight: 700, step: 2, line_height: 1.12, why: "Chart titles: short, bold statements"}
+    body:    {family: "Lato", weight: 400, step: 0, line_height: 1.3, why: "Context lines"}
+    caption: {family: "Lato", weight: 700, step: -1, tracking: 0.08, case: upper, why: "Axis labels, units, sources"}
+    mono:    {family: "Noto Sans Mono", weight: 400, step: -1, why: "Data source footnotes and raw values"}
+grid:
+  columns: 12
+  margin: 0.08
+  gutter: 0.02
+  why: "Dashboard grid: charts occupy 8-12 columns, a stat column on the side"
+shape:
+  radius: 0.014
+  stroke: 0.003
+  why: "Slightly rounded bars and cards: product UI, not print"
+motion:
+  tempo: medium
+  easing:
+    enter: out_quint
+    exit: in_cubic
+    move: in_out_cubic
+    emphasis: out_back(1.2)
+    transition: in_out_quart
+  durations: {micro: 0.15, short: 0.35, medium: 0.6, long: 1.2}
+  stagger: 0.05
+  transitions: [cut, push, wipe]
+  why: "Data grows with confident deceleration; one small overshoot is allowed on the hero number only"
+fx:
+  enabled:
+    grain: {amount: 0.012}
+    vignette: {strength: 0.25}
+  forbidden: [glitch, chroma, scanlines, bloom, elastic, bounce, spring, particles, scramble, iris, zoom, shape_wipe]
+  why: "Numbers must stay crisp and trustworthy; no effects that distort values"
+sound:
+  genre: minimal electronic
+  bpm: 110
+  key: "A minor"
+  timbres: [soft pad, sub, pluck]
+  sfx: [tick on counters, blip when bars land, swish on pushes]
+  loudness: -14
+  why: "A steady minimal pulse gives the numbers rhythm without stealing attention"

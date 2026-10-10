@@ -1,0 +1,15 @@
+{
+  "name": "emaki",
+  "description": "Emaki: motion video, drawn entirely in code.",
+  "owner": {
+    "name": "Anton Pushkin (PSHKN)",
+    "url": "https://github.com/bypshkn"
+  },
+  "plugins": [
+    {
+      "name": "emaki",
+      "source": ".",
+      "description": "Short promo, explainer and product videos made in code: style frames, animatic with sound, final mp4 or After Effects project."
+    }
+  ]
+}
