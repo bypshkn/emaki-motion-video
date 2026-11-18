@@ -4,3 +4,17 @@ __pycache__/
 out/
 dist/
 *_analysis/
+
+# Secrets and local environments
+.env
+.env.*
+.venv/
+venv/
+
+# Your own work: keep it out of this repository even if you work inside the clone
+motion-lib/
+videos/
+*.mp4
+*.mov
+*.webm
+*.wav

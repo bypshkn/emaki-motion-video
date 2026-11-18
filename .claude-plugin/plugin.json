@@ -6,8 +6,8 @@
     "name": "Anton Pushkin (PSHKN)",
     "url": "https://github.com/bypshkn"
   },
-  "homepage": "https://github.com/bypshkn/emaki",
-  "repository": "https://github.com/bypshkn/emaki",
+  "homepage": "https://github.com/bypshkn/emaki-motion-video",
+  "repository": "https://github.com/bypshkn/emaki-motion-video",
   "license": "MIT",
   "keywords": ["motion design", "video", "animation", "kinetic typography", "after effects", "skia", "ffmpeg"]
 }

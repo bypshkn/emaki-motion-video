@@ -66,6 +66,9 @@ SKILL_DIR="<the folder this SKILL.md is in>"   # set in every shell call; keep p
 bash "$SKILL_DIR/scripts/setup_env.sh"
 python3 "$SKILL_DIR/scripts/mv.py" -h          # the CLI, written $MV below
 ```
+If setup stops because pip cannot install into this Python, follow its hint. On the user's
+computer: make the venv it names and use that venv's python in place of `python3` in `$MV`. In a
+disposable sandbox or container only: re-run setup with `EMAKI_ALLOW_SYSTEM_PIP=1`.
 `$MV init <dir> --aspect 9:16 --duration 30` creates the project in the folder the user names
 (otherwise `<working folder>/videos/<YYYY-MM-DD>-<slug>/`). Long renders stop at a time budget
 (`--budget`, default 140 s, below most shell command timeouts), exit with code 3 and `PARTIAL`;
@@ -84,8 +87,9 @@ add `--id <name>` to file it there), open the sheets and write the breakdown **m
 (carrier, how one idea turns into the next, camera, how long anything stays still, rhythm of
 hits), then **light** (where it comes from, what glows, darkest and lightest areas, materials),
 palette and fonts last. If the user keeps a library (`motion-lib/`, found by walking up from the
-project, or `$MV --lib DIR <command>` / `$MV_LIB`), read its `README.md` and `references/INDEX.md`:
-the user's taste.
+project but never above the home folder, or `$MV --lib DIR <command>` / `$MV_LIB`), read its
+`README.md` and `references/INDEX.md`: the user's taste. Commands print `[lib]` lines with the
+library and the engine_ext modules they ran; if a path there is not the user's, stop and ask.
 
 ### Stage 1: Concept, look, style frames -> GATE 1
 

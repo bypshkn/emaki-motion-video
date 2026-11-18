@@ -14,8 +14,12 @@ my-videos/
 ```
 
 Emaki finds it by walking up from the project folder (`analyze-ref --id` walks up from the
-current folder or the video's folder). You can also put `--lib DIR` before the command
-(`mv.py --lib DIR styles`) or set `$MV_LIB`.
+current folder or the video's folder). The walk stops at your home folder. For a project outside
+home it goes at most two levels up, which covers the layout above. You can also put `--lib DIR`
+before the command (`mv.py --lib DIR styles`) or set `$MV_LIB`.
+
+Every `.py` file in `engine_ext/` runs on every Emaki command, like code you wrote yourself.
+Keep only your own code there. Each command prints the library path and the modules it loaded.
 
 ## Layout
 

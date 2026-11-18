@@ -33,6 +33,7 @@ import os
 import re
 import subprocess
 import sys
+from fractions import Fraction
 
 import numpy as np
 
@@ -907,7 +908,9 @@ def check_flicker(P, R, video):
     if not vs:
         return
     H = int(round(W * vs["height"] / vs["width"] / 2) * 2)
-    fps = eval(vs["r_frame_rate"])
+    fps = frame_rate(vs["r_frame_rate"])
+    if fps <= 0:
+        return
     raw = subprocess.run(["ffmpeg", "-v", "error", "-i", video, "-vf", f"scale={W}:{H}", "-f", "rawvideo",
                           "-pix_fmt", "gray", "-"], capture_output=True).stdout
     fr = np.frombuffer(raw, np.uint8).reshape(-1, H, W).astype(np.float32) / 255
@@ -957,6 +960,14 @@ def probe(path):
     return json.loads(r.stdout or "{}")
 
 
+def frame_rate(rate):
+    """ffprobe rate string ("30000/1001", "60/1", "0/0") -> fps; 0.0 when it cannot be read."""
+    try:
+        return float(Fraction(str(rate)))
+    except (ValueError, ZeroDivisionError):
+        return 0.0
+
+
 def check_format(P, R, brief, video, final):
     end = max((sc.t1 for sc in P.scenes), default=0.0)
     if P.scenes and P.duration - end > 1.0 / P.fps + 1e-6:
@@ -979,7 +990,7 @@ def check_format(P, R, brief, video, final):
         if final:
             if min(vs["width"], vs["height"]) != 1080:
                 R.add("FAIL", "format", f"final short side {min(vs['width'], vs['height'])}, expected 1080")
-            if abs(eval(vs["r_frame_rate"]) - P.fps) > 0.01:
+            if abs(frame_rate(vs["r_frame_rate"]) - P.fps) > 0.01:
                 R.add("FAIL", "format", f"final fps {vs['r_frame_rate']}, expected {P.fps}")
         if a is None:
             R.add("FAIL", "format", "no audio stream")

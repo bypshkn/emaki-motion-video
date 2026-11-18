@@ -84,21 +84,23 @@ in 20 s, the final in 1.5-2 minutes.
 **Claude Code (plugin):**
 
 ```
-/plugin marketplace add bypshkn/emaki
+/plugin marketplace add bypshkn/emaki-motion-video
 /plugin install emaki@emaki
 ```
 
 **Claude Code (plain skill):** copy `skills/emaki` to `~/.claude/skills/emaki`.
 
 **Claude apps and Cowork:** download `emaki.zip` from
-[Releases](https://github.com/bypshkn/emaki/releases) and upload it in the Skills section of
+[Releases](https://github.com/bypshkn/emaki-motion-video/releases) and upload it in the Skills section of
 your settings (Settings → Capabilities, or Customize → Skills, depending on the app version).
 Code execution must be on.
 
 **Requirements:** Python 3.10+ and ffmpeg. On the first run the skill calls
-`scripts/setup_env.sh`, which installs the Python packages (skia-python, numpy, scipy, pyyaml,
-uharfbuzz, pillow). On macOS, install ffmpeg with `brew install ffmpeg`; if pip refuses to
-install into your system Python, make a virtualenv first. For the After Effects output:
+`scripts/setup_env.sh`, which installs the missing Python packages (skia-python, numpy, scipy,
+pyyaml, uharfbuzz, pillow, fonttools) within the versions in `scripts/requirements.txt`. On
+macOS, install ffmpeg with `brew install ffmpeg`. If pip refuses to install into your system
+Python, the script stops and prints how to make a separate environment (venv) for Emaki. It
+never overrides that refusal on its own. For the After Effects output:
 After Effects 24+, and Node.js if you want the project checked against a mock AE first.
 
 ## Use it

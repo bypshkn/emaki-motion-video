@@ -23,8 +23,9 @@
 
 Project layout: brief.yaml, design.yaml, storyboard.md, video.py (build() -> Project),
 fonts/, assets/, data/, engine_ext/, out/.
-User library (styles + engine extensions that proved useful): the first `motion-lib/`
-found walking up from the project folder, or --lib / $MV_LIB.
+User library (styles + engine extensions that proved useful): --lib / $MV_LIB, otherwise the
+first `motion-lib/` found walking up from the project folder. The walk stops at the home folder;
+for a project outside home it goes at most two levels up. Every command logs the library it used.
 """
 import argparse
 import glob
@@ -48,20 +49,31 @@ def log(msg):
     print(msg, flush=True)
 
 
+LIB_MAX_UP_OUTSIDE_HOME = 2   # <root>/motion-lib next to <root>/projects/<video>
+
+
 def find_lib(start, explicit=None):
+    """The user library: --lib, then $MV_LIB, then the first `motion-lib/` walking up from `start`.
+    The walk never leaves the home folder (it checks home itself last). For a project outside home
+    it checks only the project folder and two levels above it. The library's engine_ext/*.py runs
+    on every command, so the walk must not pick up a folder the user does not own."""
     if explicit:
         return os.path.abspath(explicit)
     if os.environ.get("MV_LIB"):
-        return os.environ["MV_LIB"]
-    d = os.path.abspath(start)
+        return os.path.abspath(os.environ["MV_LIB"])
+    d = os.path.realpath(start)
+    home = os.path.realpath(os.path.expanduser("~"))
+    inside_home = d == home or d.startswith(home.rstrip(os.sep) + os.sep)
+    up = 0
     while True:
         cand = os.path.join(d, "motion-lib")
         if os.path.isdir(cand):
             return cand
         nd = os.path.dirname(d)
-        if nd == d:
+        if nd == d or d == home or (not inside_home and up >= LIB_MAX_UP_OUTSIDE_HOME):
             return None
         d = nd
+        up += 1
 
 
 def style_dirs(lib):
@@ -75,10 +87,15 @@ def load(dirp, lib=None):
     from engine import load_extensions, fonts
     from engine.render import load_project
     lib = find_lib(dirp, lib)
+    if lib:
+        log(f"[lib] user library: {lib}")
     for base in (lib, dirp):
         if base and os.path.isdir(os.path.join(base, "engine_ext")):
             sys.path.insert(0, os.path.join(base, "engine_ext"))   # `from my_layer import X` in video.py
-            load_extensions(base)
+            mods = load_extensions(base)
+            if mods:
+                names = ", ".join(os.path.basename(m.__file__) for m in mods)
+                log(f"[lib] engine_ext loaded from {os.path.join(base, 'engine_ext')}: {names}")
     if lib and os.path.isdir(os.path.join(lib, "fonts")):
         fonts.PROJECT_FONT_DIRS.append(os.path.join(lib, "fonts"))
     return load_project(os.path.join(dirp, "video.py"))

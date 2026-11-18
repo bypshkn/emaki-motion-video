@@ -1,0 +1,12 @@
+# Emaki Python dependencies. setup_env.sh installs only the missing ones, within these ranges.
+# Lower bounds: the oldest set the smoke preview rendered on (Python 3.10, 2026-11-18).
+# Upper bounds: below the next major release. skia-python and uharfbuzz change their APIs between
+# releases, so they stop below the release after the newest tested one (144.1 and 0.56.4).
+# Render tests/smoke before raising a bound. skia-python 87.x does not work (no skia.RTreeFactory).
+numpy>=1.26,<3
+scipy>=1.11,<2
+pyyaml>=6.0,<7
+pillow>=10.4,<13
+fonttools>=4.47,<5
+uharfbuzz>=0.39,<0.57
+skia-python>=138.0,<145
