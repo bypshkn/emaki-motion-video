@@ -1,6 +1,6 @@
 {
   "name": "emaki",
-  "version": "1.0.0",
+  "version": "1.0.1",
   "description": "Motion video, drawn entirely in code: short promo, explainer and product videos rendered by a Python engine, with two approval gates, automated QA and an independent critic. Output: mp4 or an After Effects project.",
   "author": {
     "name": "Anton Pushkin (PSHKN)",

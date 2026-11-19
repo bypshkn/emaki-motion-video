@@ -1,6 +1,6 @@
 # Emaki 絵巻
 
-![Version](https://img.shields.io/badge/version-1.0.0-b8923f?style=flat-square)
+![Version](https://img.shields.io/badge/version-1.0.1-b8923f?style=flat-square)
 ![Output](https://img.shields.io/badge/output-mp4_·_After_Effects-1b2650?style=flat-square)
 ![License](https://img.shields.io/badge/license-MIT-0b0c10?style=flat-square)
 
