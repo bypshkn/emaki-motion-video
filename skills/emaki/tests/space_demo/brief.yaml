@@ -1,0 +1,7 @@
+# Test fixture for the space kit (not a client brief).
+topic: Space demo
+duration: 8.0
+format: "16:9"
+language: en
+output: mp4
+texts: []

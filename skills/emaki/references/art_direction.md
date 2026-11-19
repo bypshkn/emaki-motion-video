@@ -11,6 +11,7 @@ any new scene of this video would look and sound.
 4. Grid and composition
 5. Motion language
 5b. Light and material
+5c. Space: the set and the camera
 6. Effects policy
 7. Sound palette
 8. Brand input (site, screenshots, design system)
@@ -24,7 +25,7 @@ any new scene of this video would look and sound.
 1. Read the brief: goal, audience, platform, duration, tone words, references, brand sources.
 2. Write one sentence of **concept**: the metaphor the video borrows from (a printed report, a
    control room, a toy box, a film title sequence, a product UI). Every later decision serves it.
-3. Decide in this order: palette -> type -> grid -> light -> motion -> effects (+ forbidden) -> sound.
+3. Decide in this order: palette -> type -> grid -> light -> space -> motion -> effects (+ forbidden) -> sound.
    Later choices must not contradict earlier ones.
 4. For each block write `why:` in one line that points to the brief or a reference
    ("brief: 'calm, premium' -> long decelerations, no overshoot").
@@ -120,6 +121,38 @@ glowing light in a dark world, r03 one saturated green with a soft halo on white
 Write the light plan into design.yaml as a `light` block (key position and colour, ground, shadow
 style, grain, where the accent lives) with a `why`.
 
+## 5c. Space: the set and the camera (details in motion.md 2b)
+
+A product film had good layout and good light and was still "fine but ordinary", because everything
+lived on one plane and the camera only slid and zoomed. The 3D tests that followed showed the
+other edges: seen from the side, or from a near low camera, the same flat layers read as
+PowerPoint 3D; and a neon set with a camera shrank the big type until the concept was gone.
+Decide first whether the concept has a world:
+1. **A set from the concept**, when there is a world: a stage, an auction yard, a desk, a night
+   street, a studio cyclorama, a screen in a room. Write it in one line (`space.set`). It gives
+   the floor, the light sources and the air.
+2. **Three planes in every key frame**: a soft foreground, the sharp subject, a background in the
+   haze. The floor counts as a plane; dust and beams make the air visible.
+3. **Scale cues**: things standing on the floor with a reflection or a contact shadow, beams that
+   come from somewhere, a horizon that dissolves. Without them depth reads as blur, not space.
+4. **Shot list in the storyboard**: for every beat the setup (size, small angle) and the move
+   inside it. Plan one establishing shot, one hero shot (a close through the lens with a slow
+   push in) and the cuts on beats.
+5. **Never the PowerPoint 3D look**: no extruded WordArt type, no cards or screenshots rotated
+   in space, no photo wall on a tilted plane, no glossy reflection under every element, no
+   camera swinging round to the side or coming near enough to bend the letters. Depth comes from
+   position, parallax, focus, haze and light; the camera stays within 15 degrees of head-on and
+   close-ups come through the lens (QA `oblique`).
+6. **Flat is a decision**, not a default: a Swiss poster, an editorial collage or a UI tutorial may
+   stay on one plane (`space: {mode: flat, why: ...}`); the camera still moves.
+7. **A type-led film keeps its type.** When the concept is big words, the set never shrinks
+   them: the word fills 70-90 % of the width in every key frame,
+   depth comes from scale contrast, crop and layered words, the camera moves into the word. A
+   set is for concepts with a world (QA `type_scale`).
+
+Write the `space` block: mode (flat | 2.5d), planes, shot_sizes, angles, moves, set, why.
+QA `space` holds the film to it.
+
 ## 6. Effects policy
 
 - `fx.enabled` lists global post effects with parameters; keep them subtle and purposeful
@@ -182,7 +215,8 @@ signals, not data). They fit this engine as follows:
 | current | how to do it here |
 |---|---|
 | Kinetic type as the main character, readable on mute | hero words 60-80% of the width, `KineticWords`, `write_on`, fills and outlines that act; the line carries the story without sound |
-| Tactile materials: grain, frosted glass, soft 3D depth | `grain` (luma-weighted), `Glass`, `SoftShadow`, depth + `camera.dof`, `rx`/`ry` tilts |
+| Tactile materials: grain, frosted glass, soft 3D depth | `grain` (luma-weighted), `Glass`, `SoftShadow`, depth + `camera.dof` |
+| Cinematic depth: type and products in a lit set, filmed head-on | `Floor`, `haze`, `LightBeam`, `dust`, `Reflection` for the hero, `camera.shot/dolly/crane` (motion.md 2b) |
 | Light as design: gradient light, glows, light sweeps | `KeyLight`, `sheen`, `Glow` on the light only, `Radial`/`Conic` gradient fills |
 | Bold minimalism: oversized type, one bright unexpected colour, clean space | one accent at full saturation, big type, few elements, generous light-filled space |
 | Hand-made accents: a callout or sticker moving on twos | `layer.on_twos(12)` on one element, never on the whole film |
@@ -191,7 +225,9 @@ signals, not data). They fit this engine as follows:
 
 Dated: glossy over-produced transition tricks (glitch, spin, zoom-through on every cut), the
 neon-purple-on-black "AI" look, flat vector with no light, everything centred, every element
-sliding up with the same curve, stock particles and lens flares. Use one only when the brief or a
+sliding up with the same curve, stock particles and lens flares, PowerPoint 3D (extruded
+WordArt, cards rotated in space, mirror floors under everything), a grid floor to the horizon
+when the story is not a screen or a plan, glow on every word, HUD clutter around the hero. Use one only when the brief or a
 reference asks for it.
 
 Sources: Product Hype, "5 Motion Design Trends Defining B2B SaaS in 2026"; AutoAE, "Motion
@@ -206,6 +242,7 @@ Graphics Trends 2026"; Tangence, "Top Motion Graphic Trends in 2026".
 - [ ] grid margin >= 0.08; platform zones considered
 - [ ] easing per role, durations, stagger, transitions list
 - [ ] light block: key light position/colour, ground, shadow style, grain, where the accent lives
+- [ ] space block: mode, planes, shot sizes, angles, moves, the set in one line; type-led films keep their type
 - [ ] fx.enabled subtle; fx.forbidden written
 - [ ] sound genre/bpm/key/timbres/sfx; scene lengths in bars
 - [ ] brand-derived values cite the source; inventions tagged

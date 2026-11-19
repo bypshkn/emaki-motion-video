@@ -12,3 +12,4 @@ from .ui import Card, Button, Chip, Window, Phone, Cursor, Toggle, Input, Toast,
 from .kinetic import Comet, GridPlane, Wire3D, Waveform, KineticWords, Flash
 from .shape import path_point, glow_dot
 from .light import KeyLight, Glass
+from .space import Floor, Reflection, LightBeam, Motes, dust, mirror_y

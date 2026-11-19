@@ -77,6 +77,9 @@ def _auto_blur(P, t, shutter_deg=180.0, px_per_sample=5.0, max_samples=10):
     """Real motion blur only where the camera moves fast (travel, whip-like moves): the
     number of sub-frames grows with the on-screen displacement during the shutter, so held
     shots cost nothing extra. Off with P.auto_blur = False."""
+    for t0, t1, n, sh in getattr(P, "blur_windows", ()):
+        if t0 <= t <= t1:
+            return {"samples": int(n), "shutter": sh, "window": True}
     if not getattr(P, "auto_blur", True):
         return None
     dt = shutter_deg / 360.0 / P.fps
@@ -145,6 +148,20 @@ def _camera_pan_px(P, t, dt, scale):
     return best
 
 
+def _cut_clamp(P, t, half):
+    """Shutter interval around t that never crosses a camera cut (a cut is a step between
+    c - 1 ms and c): sub-frames stay in the setup that t belongs to."""
+    lo, hi = t - half, t + half
+    for s in P.active_scenes(t):
+        for c in s.camera.cuts:
+            ca = s.t0 + c
+            if ca <= t and ca > lo:
+                lo = ca
+            elif ca > t and ca - 1e-3 < hi:
+                hi = max(t, ca - 1e-3)
+    return lo, hi
+
+
 def frame(P, t, scale=1.0, ss=2, hidden=None, preview=False, post=True):
     """Final pixels for time t: uint8 HxWx3."""
     mb = _mb_settings(P, t)
@@ -155,15 +172,17 @@ def frame(P, t, scale=1.0, ss=2, hidden=None, preview=False, post=True):
         # every edge, so they skip supersampling (P.mb_ss, default 1): n x 1 instead of n x 4.
         # Blur forced on a scene keeps full supersampling (static mattes would show seams).
         sub_ss = min(ss, int(getattr(P, "mb_ss", 1) or 1)) if mb.get("auto") else ss
+        lo, hi = _cut_clamp(P, t, shutter / 2)
+        clamped = lo > t - shutter / 2 + 1e-9 or hi < t + shutter / 2 - 1e-9
         acc = None
         for i in range(n):
-            ti = t + (i / (n - 1) - 0.5) * shutter
+            ti = lo + (hi - lo) * i / (n - 1)
             f = raw_frame(P, ti, scale, sub_ss, hidden, preview)
             acc = f if acc is None else acc + f
         img = acc / n
         # bridge the gaps between sub-frames on fast camera pans (otherwise the streak shows as
         # a comb of ghost copies): box blur along the pan, one sample spacing long
-        dx, dy = _camera_pan_px(P, t, shutter, scale)
+        dx, dy = (0.0, 0.0) if clamped else _camera_pan_px(P, t, shutter, scale)
         gx, gy = abs(dx) / (n - 1), abs(dy) / (n - 1)
         if max(gx, gy) > 2.5:
             from scipy.ndimage import uniform_filter1d

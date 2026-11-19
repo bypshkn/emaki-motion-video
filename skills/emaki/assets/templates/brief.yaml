@@ -8,6 +8,18 @@ aspect: "__ASPECT__"      # 9:16 | 16:9 | 1:1 | 4:5
 fps: 30                   # 60 only on request
 language: en              # on-screen copy language, ISO 639-1 (en, uk, de, ...); fonts must cover it
 output: mp4               # mp4 | ae
+use: commercial           # commercial: sold, published or shown to a client (rights QA fails the final) | internal: a test that never leaves the team
+publisher: ""             # whose account publishes it: the client's or ours. Content ID claims go to that account
+client_materials: []      # files the client sent (logo, fonts, screens, photos) and where their written OK on the rights is
+voice: ask                # user | file | tts | none: a promo or explainer without a voice is hard to follow (ask at stage 0)
+                          # tts = generated library voice, Google Chirp 3 HD (`mv.py tts`), with your own Google Cloud API key (references/sound.md)
+tts_voice: ""             # tts only: the Chirp 3 HD voice the user picked by ear (e.g. Kore, Charon); no default. Samples: https://docs.cloud.google.com/text-to-speech/docs/chirp3-hd
+tts_lang: ""              # tts only, optional: Chirp 3 HD locale such as de-DE; empty = from `language` (en -> en-US, uk -> uk-UA)
+tts_rate: 1.0             # tts only: pace 0.25-2.0 for every phrase; a phrase can set its own `rate`
+voice_script: []          # tts only: one item per phrase. A string, or {text, say, at, rate, take}:
+                          #   text: the line (words.json and the screen use its words); say: how it is spoken, if different
+                          #   ("Sign in with S-S-O.", "Paste the request... the app builds it"); at: second where the speech starts
+                          #   (else 0.6 s after the previous phrase); take: which take to use (mv.py tts --retake / --take)
 ae_version: null          # e.g. 24.0 when output = ae
 references: []            # screenshots / frames (paths in assets/), links, words like "Apple keynote", "Swiss style", "retro VHS"
 brand_sources: []         # site, screenshots, design system: art direction is taken from these

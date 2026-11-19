@@ -265,6 +265,7 @@ class _HoldZoom:
 def Flash(t, color_="accent", dur=0.16, peak=1.0, hold=0.0, name=None):
     """Full-frame colour flash: up in 2 frames, down over `dur` (a beat hit or a disguised cut)."""
     f = Background(color_, name=name or f"Flash {t:.2f}")
+    f.on_top = True          # in a 3D scene it covers the whole set, not only the far layers
     f.opacity.key(t - 0.04, 0.0, "linear").key(t, peak, "out_quad").key(t + hold, peak, "linear") \
         .key(t + hold + dur, 0.0, "out_cubic")
     f.show(t - 0.05, t + hold + dur + 0.02)

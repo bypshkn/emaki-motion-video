@@ -496,10 +496,18 @@ class Layer:
         self.rx = P_(rx, "rx")      # 3D tilt around x (deg): + tips the top edge away
         self.ry = P_(ry, "ry")      # 3D turn around y (deg): + turns the right edge away
         self.echo_cfg = None        # (n, dt, decay): ghost copies trailing in time
+        self.billboard = False      # True: always faces the camera (labels, light beams)
 
     @property
     def is3d(self):
-        return self.rx.animated or self.ry.animated or self.rx.rest() != 0 or self.ry.rest() != 0
+        return self.rx.animated or self.ry.animated or self.rx.rest() != 0 or self.ry.rest() != 0 or \
+            self.billboard or getattr(self, "world_pre", None) is not None
+
+    def face_camera(self, on=True):
+        """Billboard: the layer keeps facing the camera while it orbits (a label in a 3D set,
+        a light beam). AE: Auto-Orient towards the camera."""
+        self.billboard = bool(on)
+        return self
 
     # ---- geometry
     def local_bounds(self, t):
@@ -563,9 +571,10 @@ class Layer:
         for sh in getattr(self, "sheens", ()):
             sh.draw(canvas, t, self, pic)
 
-    def draw(self, canvas, t, ctx, as_matte=False, m=None, _ghost=1.0, dof=0.0):
+    def draw(self, canvas, t, ctx, as_matte=False, m=None, _ghost=1.0, dof=0.0, tint=None, near_clip=None):
         """m overrides the layer's own matrix (the 3D camera passes a homography); dof is the
-        depth-of-field blur (local px) the camera asks for."""
+        depth-of-field blur (local px) the camera asks for; tint (r, g, b, k) pulls the layer's
+        colour towards the scene haze by k (atmospheric perspective)."""
         step = getattr(self, "time_step", None)
         if step:
             # posterized time ("on twos"): the layer only updates every `step` seconds
@@ -586,6 +595,8 @@ class Layer:
         parent = canvas.getTotalMatrix()
         canvas.save()
         canvas.concat(m if m is not None else self.matrix(t))
+        if near_clip is not None:
+            canvas.clipPath(near_clip, True)
         if self.clip is not None:
             x, y, w, h = self.clip.at(t)
             canvas.clipRect(skia.Rect.MakeXYWH(x, y, w, h), True)
@@ -593,6 +604,10 @@ class Layer:
         if dof > 0.35 and not as_matte:
             b = skia.ImageFilters.Blur(dof, dof, skia.TileMode.kDecal)
             filt = b if filt is None else skia.ImageFilters.Compose(b, filt)
+        if tint is not None and tint[3] > 0.004 and not as_matte:
+            cf = skia.ColorFilters.Blend(skia.Color4f(*tint).toColor(), skia.BlendMode.kSrcATop)
+            tf = skia.ImageFilters.ColorFilter(cf)
+            filt = tf if filt is None else skia.ImageFilters.Compose(tf, filt)
         blend = "normal" if as_matte else self.blend
         sheen_on = bool(getattr(self, "sheens", None)) and not as_matte and any(s.active(t) for s in self.sheens)
         need = op < 0.999 or blend != "normal" or self.mask is not None or filt is not None or sheen_on
@@ -604,7 +619,7 @@ class Layer:
             # including strokes, shadows and nested filters), then replayed into a layer of that
             # size. At 2x supersampling a full-frame layer is 33 MB, and a blur over it costs the
             # whole frame; most layers cover a few percent of it. Same pixels, 2-4x faster frames.
-            pic, ink = self._record(canvas, t, ctx)
+            pic, ink = (None, None) if near_clip is not None else self._record(canvas, t, ctx)
             if pic is not None and ink is not None and ink.isEmpty():
                 canvas.restore()
                 return
@@ -878,9 +893,11 @@ class Layer:
         'static'   the element enters and then sits on purpose (a label, an axis, an end card);
         'offframe' copy text may cross the frame edge (a giant word cropped by design);
         'overlap'  copy deliberately sits on or under other layers (overprint, text under stripes):
-                   occlusion and contrast are not checked for it.
+                   occlusion and contrast are not checked for it;
+        'oblique'  a flat layer is held at an angle to the camera on purpose (a floor-like sheet,
+                   a quick 3D flip that the brief asks for).
         `why` is required: one line on why the exception serves the design."""
-        bad = set(what) - {"static", "offframe", "overlap"}
+        bad = set(what) - {"static", "offframe", "overlap", "oblique"}
         if bad:
             raise ValueError(f"allow(): unknown exception(s) {sorted(bad)}")
         if not why:
@@ -976,14 +993,27 @@ def _sc(x, y, z=1.0):
     return np.diag([x, y, z, 1.0])
 
 
-def layer_model(layer, t):
-    """4x4 model matrix of a layer: T(x, y, depth) Rz Ry Rx S T(-anchor), AE order."""
+def layer_model(layer, t, rx=None, ry=None):
+    """4x4 model matrix of a layer: T(x, y, depth) Rz Ry Rx S T(-anchor), AE order.
+    `rx`/`ry` given: a billboard facing the camera, T Ry Rx Rz S T(-anchor), so its own roll
+    stays a roll in the picture plane. A layer may carry `world_pre` (4x4 or fn(t) -> 4x4)
+    applied in world space after its own transform: a reflection is its source mirrored about
+    the floor plane."""
     x, y = layer.position.at(t)
     ax, ay = layer.anchor.at(t)
     sc = layer.scale.at(t)
     sx, sy = sc if isinstance(sc, tuple) else (sc, sc)
-    return (_tr(x, y, layer.depth.at(t)) @ _rz(layer.rotation.at(t)) @ _ry(layer.ry.at(t)) @
-            _rx(layer.rx.at(t)) @ _sc(sx, sy) @ _tr(-ax, -ay, 0))
+    if rx is None and ry is None:
+        M = (_tr(x, y, layer.depth.at(t)) @ _rz(layer.rotation.at(t)) @ _ry(layer.ry.at(t)) @
+             _rx(layer.rx.at(t)) @ _sc(sx, sy) @ _tr(-ax, -ay, 0))
+    else:
+        M = (_tr(x, y, layer.depth.at(t)) @ _ry(layer.ry.at(t) if ry is None else ry) @
+             _rx(layer.rx.at(t) if rx is None else rx) @ _rz(layer.rotation.at(t)) @
+             _sc(sx, sy) @ _tr(-ax, -ay, 0))
+    wp = getattr(layer, "world_pre", None)
+    if wp is not None:
+        M = (wp(t) if callable(wp) else wp) @ M
+    return M
 
 
 class Camera:
@@ -1000,56 +1030,130 @@ class Camera:
         self.rotation = Prop(0.0, "camera.rotation")
         self.rx = Prop(0.0, "camera.rx")
         self.ry = Prop(0.0, "camera.ry")
+        # lens: focal-length multiplier at a fixed camera distance (zoom moves the camera, lens
+        # changes the lens). Animate both against each other for a dolly zoom.
+        self.lens = Prop(1.0, "camera.lens")
         # depth of field: layers whose depth differs from `focus` get blurred by
         # aperture px per 1000 px of defocus (screen px at the final size). 0 = everything sharp.
         self.focus = Prop(0.0, "camera.focus")
         self.aperture = Prop(0.0, "camera.aperture")
+        self.cuts = []            # scene times of hard cuts between camera setups (cut()/shot())
+        self._tilt_blur = False   # orbit()/crane() moves also drive the automatic motion blur
 
     @property
     def active(self):
-        ps = (self.pos, self.zoom, self.rotation, self.rx, self.ry)
+        ps = (self.pos, self.zoom, self.rotation, self.rx, self.ry, self.lens)
         return any(p.animated for p in ps) or self.pos.rest() != (self.W / 2, self.H / 2) or \
-            self.zoom.rest() != 1.0 or self.rotation.rest() != 0.0 or self.rx.rest() != 0 or self.ry.rest() != 0
+            self.zoom.rest() != 1.0 or self.rotation.rest() != 0.0 or self.rx.rest() != 0 or \
+            self.ry.rest() != 0 or self.lens.rest() != 1.0
 
-    def view_proj(self, t):
-        """3x4 world -> homogeneous screen."""
+    def _view(self, t):
         z = max(0.01, self.zoom.at(t))
         D = self.focal / z
         cx, cy = self.pos.at(t)
-        V = _tr(0, 0, D) @ _rz(-self.rotation.at(t)) @ _rx(-self.rx.at(t)) @ _ry(-self.ry.at(t)) @ _tr(-cx, -cy, 0)
-        f = self.focal
+        return _tr(0, 0, D) @ _rz(-self.rotation.at(t)) @ _rx(-self.rx.at(t)) @ _ry(-self.ry.at(t)) @ _tr(-cx, -cy, 0)
+
+    def view_proj(self, t):
+        """3x4 world -> homogeneous screen."""
+        f = self.focal * max(0.01, self.lens.at(t))
         P = np.array([[f, 0, self.W / 2, 0], [0, f, self.H / 2, 0], [0, 0, 1, 0]], float)
-        return P @ V
+        return P @ self._view(t)
+
+    def scale_at(self, t, depth=0.0):
+        """On-screen scale of an untilted plane at `depth` (1.0 = drawn at its own size)."""
+        D = self.focal / max(0.01, self.zoom.at(t))
+        return self.focal * max(0.01, self.lens.at(t)) / max(1.0, D + depth)
 
     def homography(self, t, layer, lt=None):
         """skia.Matrix mapping the layer's local plane to the screen, or None if the layer
-        is behind the camera."""
-        M = self.view_proj(t) @ layer_model(layer, t if lt is None else lt)
-        H = M[:, [0, 1, 3]]
+        is behind the camera. Billboards (layer.billboard) turn to face the camera."""
+        H = self._homo(t, layer, lt)
         b = layer.local_bounds(t if lt is None else lt)
         if b is not None:
             for x, y in ((b[0], b[1]), (b[2], b[1]), (b[0], b[3]), (b[2], b[3])):
                 if H[2, 0] * x + H[2, 1] * y + H[2, 2] <= 1e-3:
                     return None
-        H = H / H[2, 2] if abs(H[2, 2]) > 1e-12 else H
+        return self._skm(H)
+
+    def _homo(self, t, layer, lt=None):
+        tt = t if lt is None else lt
+        bb = getattr(layer, "billboard", False)
+        if bb == "y":
+            M = self.view_proj(t) @ layer_model(layer, tt, ry=self.ry.at(t))
+        elif bb:
+            M = self.view_proj(t) @ layer_model(layer, tt, rx=self.rx.at(t), ry=self.ry.at(t))
+        else:
+            M = self.view_proj(t) @ layer_model(layer, tt)
+        return M[:, [0, 1, 3]]
+
+    @staticmethod
+    def _skm(H, k=None):
+        if k is None:
+            k = H[2, 2] if abs(H[2, 2]) > 1e-12 else 1.0
+        H = H / k
         m = skia.Matrix()
         m.setAll(H[0, 0], H[0, 1], H[0, 2], H[1, 0], H[1, 1], H[1, 2], H[2, 0], H[2, 1], H[2, 2])
         return m
 
+    def homography_clip(self, t, layer):
+        """Like homography(), but a layer that is only partly behind the camera (a floor under
+        a dolly, a card the camera flies through) is kept: -> (matrix, clip path in local
+        coords or None). (None, None) when it is entirely behind the near plane."""
+        H = self._homo(t, layer)
+        b = layer.local_bounds(t)
+        if b is None:
+            return self._skm(H), None
+        near = 0.02 * self.focal
+        corners = ((b[0], b[1]), (b[2], b[1]), (b[2], b[3]), (b[0], b[3]))
+        ws = [H[2, 0] * x + H[2, 1] * y + H[2, 2] for x, y in corners]
+        if min(ws) > 1e-3:
+            return self._skm(H), None
+        if max(ws) <= near:
+            return None, None
+        # the part of the plane in front of the near plane: a big box around the bounds (glows
+        # and shadows reach past them) cut by the line w = near
+        w_, h_ = b[2] - b[0], b[3] - b[1]
+        m = 2.0 * max(w_, h_, 1.0)
+        box = [(b[0] - m, b[1] - m), (b[2] + m, b[1] - m), (b[2] + m, b[3] + m), (b[0] - m, b[3] + m)]
+        wf = lambda p: H[2, 0] * p[0] + H[2, 1] * p[1] + H[2, 2]
+        poly = []
+        for i in range(4):
+            a, c = box[i], box[(i + 1) % 4]
+            wa, wc = wf(a) - near, wf(c) - near
+            if wa >= 0:
+                poly.append(a)
+            if (wa >= 0) != (wc >= 0):
+                u = wa / (wa - wc)
+                poly.append((a[0] + (c[0] - a[0]) * u, a[1] + (c[1] - a[1]) * u))
+        if len(poly) < 3:
+            return None, None
+        path = skia.Path()
+        path.moveTo(*poly[0])
+        for p in poly[1:]:
+            path.lineTo(*p)
+        path.close()
+        # normalise by a positive w so visible points keep w > 0
+        k = H[2, 2] if H[2, 2] > 1e-6 else max(ws)
+        return self._skm(H, k), path
+
     def view_depth(self, t, layer):
         """Distance along the view axis of the layer's anchor (draw order, far first)."""
-        z = max(0.01, self.zoom.at(t))
-        D = self.focal / z
-        cx, cy = self.pos.at(t)
-        V = _tr(0, 0, D) @ _rz(-self.rotation.at(t)) @ _rx(-self.rx.at(t)) @ _ry(-self.ry.at(t)) @ _tr(-cx, -cy, 0)
         x, y = layer.position.at(t)
-        p = V @ np.array([x, y, layer.depth.at(t), 1.0])
+        p = self._view(t) @ np.array([x, y, layer.depth.at(t), 1.0])
         return p[2]
+
+    def project(self, t, x, y, z=0.0):
+        """World point -> (screen x, screen y, view distance), or None behind the camera."""
+        p = self.view_proj(t) @ np.array([x, y, z, 1.0])
+        if p[2] <= 1e-3:
+            return None
+        return p[0] / p[2], p[1] / p[2], p[2]
 
     def matrix(self, t, depth=0.0):
         """2.5D camera matrix for an untilted plane at `depth` (kept for QA helpers)."""
         z = max(0.01, self.zoom.at(t))
-        f = self.focal / (self.focal / z + depth) if (self.focal / z + depth) > 1 else 1000.0
+        lens = max(0.01, self.lens.at(t))
+        f = self.focal * lens / (self.focal / z + depth) if (self.focal / z + depth) > 1 else 1000.0
         cx, cy = self.pos.at(t)
         m = skia.Matrix()
         m.setTranslate(self.W / 2, self.H / 2)
@@ -1177,23 +1281,176 @@ class Camera:
         if region is None:
             region = (self.W * margin, self.H * margin, self.W * (1 - margin), self.H * (1 - margin))
         rx0, ry0, rx1, ry1 = region
-        z = min((rx1 - rx0) / bw, (ry1 - ry0) / bh, max_zoom)
-        cx = (x0 + x1) / 2 - ((rx0 + rx1) / 2 - self.W / 2) / z
-        cy = (y0 + y1) / 2 - ((ry0 + ry1) / 2 - self.H / 2) / z
-        return self.travel(t, (cx, cy), zoom=z, dur=dur, ease=ease)
+        lens = max(0.01, self.lens.base_at(t + dur))
+        k = min((rx1 - rx0) / bw, (ry1 - ry0) / bh, max_zoom)     # on-screen scale of the stage plane
+        cx = (x0 + x1) / 2 - ((rx0 + rx1) / 2 - self.W / 2) / k
+        cy = (y0 + y1) / 2 - ((ry0 + ry1) / 2 - self.H / 2) / k
+        return self.travel(t, (cx, cy), zoom=k / lens, dur=dur, ease=ease)
 
     def speed_px(self, t, dt):
         """Screen-space displacement (px at project size) of the frame centre and edges between
         t - dt/2 and t + dt/2: drives automatic camera motion blur."""
         a, b = t - dt / 2, t + dt / 2
+        if any(a - 1e-6 <= c <= b + 1e-6 for c in self.cuts):
+            return 0.0                    # a cut is not a move: never blend two setups
         (xa, ya), (xb, yb) = self.pos.at(a), self.pos.at(b)
         za, zb = self.zoom.at(a), self.zoom.at(b)
         ra, rb = self.rotation.at(a), self.rotation.at(b)
-        pan = math.hypot(xb - xa, yb - ya) * (za + zb) / 2
+        la, lb = self.lens.at(a), self.lens.at(b)
+        pan = math.hypot(xb - xa, yb - ya) * (za * la + zb * lb) / 2
         half_diag = math.hypot(self.W, self.H) / 2
-        zoomd = abs(zb - za) / max(1e-3, (za + zb) / 2) * half_diag
+        zoomd = abs(zb * lb - za * la) / max(1e-3, (za * la + zb * lb) / 2) * half_diag
         rot = abs(math.radians(rb - ra)) * half_diag
-        return pan + zoomd + rot
+        # an orbit or a crane tilt sweeps the frame like a pan of the same angle. Only for moves
+        # made with orbit()/crane(): older films keyed rx/ry by hand and render as they did
+        orb = 0.0
+        if self._tilt_blur:
+            orb = (abs(math.radians(self.rx.base_at(b) - self.rx.base_at(a))) +
+                   abs(math.radians(self.ry.base_at(b) - self.ry.base_at(a)))) * self.focal * (la + lb) / 2
+        return pan + zoomd + rot + orb
+
+    # ---- cinematography: setups, cuts and 3D moves (motion.md section 2b) -------------
+    SIZES = {"extreme_wide": 0.22, "wide": 0.4, "full": 0.72, "medium": 1.15, "close": 1.9, "extreme_close": 3.4}
+    # 2.5D: the camera stays within ~15 degrees of head-on. Beyond that the layers show they
+    # are flat (the PowerPoint 3D look); QA `oblique` fails it.
+    ANGLES = {"eye": 0.0, "high": 10.0, "low": -8.0}
+    SIDES = {"front": 0.0, "slight": 8.0}
+    MAX_TILT = 15.0
+    MIN_DIST = 0.85          # shot(): the camera stays at least this x focal away; closer = lens
+
+    def _set(self, prop, t, v, dur=0.0, ease="in_out_cubic"):
+        """Animate `prop` to v: eased over `dur`, or a hard cut at t when dur <= 0.
+        A cut is a 1 ms step between two keys (t - 1 ms holds the old value, t has the new one),
+        so a move keyed later from t (dolly, orbit, glide) cannot turn it into a slow drift. A
+        cut inside a running move ends that move. Write the camera in time order."""
+        cur = prop.base_at(t)
+        if dur and dur > 0:
+            prop.key(t, cur).key(t + dur, v, ease)
+            return
+        if t <= 1e-6:
+            prop.key(0.0, v)
+            return
+        ks = prop.keys
+        before = [k for k in ks if k.t < t - 1e-6]
+        after = [k for k in ks if k.t > t + 1e-6]
+        if before and after and _differs_v(before[-1].v, after[0].v):
+            ks.remove(after[0])                     # the move running through the cut ends at the cut
+            after = after[1:]
+        if after:
+            import sys
+            print(f"[camera] cut at {t:.2f}s: {prop.name} has keys after it that were written before the cut; "
+                  "write the camera in time order", file=sys.stderr)
+        for k in [k for k in ks if abs(k.t - t) < 1e-6]:
+            ks.remove(k)
+        prop.key(t - 1e-3, cur, "linear")
+        prop.key(t, v, "hold")
+
+    def cut(self, t, pos=None, zoom=None, rx=None, ry=None, rotation=None, lens=None, dur=0.0, ease="in_out_cubic"):
+        """Change the camera setup at t: a hard cut (dur=0, the edit lands on a beat) or an eased
+        move of every given value over `dur`. Absolute values: pos (x, y) on the stage plane,
+        zoom (distance), rx (+ = high angle, camera above looking down), ry (+ = camera swings to
+        the subject's right), rotation (roll, dutch angle), lens."""
+        for prop, v in ((self.pos, pos), (self.zoom, zoom), (self.rx, rx), (self.ry, ry),
+                        (self.rotation, rotation), (self.lens, lens)):
+            if v is not None:
+                self._set(prop, t, v, dur, ease)
+        if (not dur or dur <= 0) and t > 1e-6 and not any(abs(c - t) < 1e-6 for c in self.cuts):
+            self.cuts.append(float(t))
+            self.cuts.sort()
+        return self
+
+    def shot(self, t, subject, size="medium", angle="eye", side=0.0, roll=0.0, dur=0.0, ease="in_out_cubic",
+             offset=(0.0, 0.0), lens=None):
+        """Frame a subject the way a camera operator names it. `subject`: a box (x0, y0, x1, y1)
+        on the stage plane or a top-level layer (its depth is taken into account). `size`:
+        extreme_wide | wide | full | medium | close | extreme_close (how much of the frame the
+        subject fills; close crops it) or a number. `angle`: eye | high | low or degrees;
+        `side`: front | slight ("-slight" for the other side) or degrees. Angles stay within
+        15 degrees: this is a 2.5D engine. `roll`: dutch angle in degrees. `lens` resets or sets
+        the lens (after a dolly_zoom it stays changed otherwise); without it a close-up that would
+        bring the camera nearer than MIN_DIST x focal is made with a longer lens instead, so type
+        is never bent by a near camera. dur=0 cuts."""
+        d = 0.0
+        if isinstance(subject, Layer):
+            b = subject.world_bounds(t)
+            if b is None:
+                raise ValueError(f"shot(): '{subject.name}' has no bounds")
+            d = subject.depth.at(t)
+        else:
+            b = subject
+        x0, y0, x1, y1 = b
+        bw, bh = max(1.0, x1 - x0), max(1.0, y1 - y0)
+        frac = self.SIZES.get(size, size) if isinstance(size, str) else float(size)
+        k = float(frac) / max(bw / self.W, bh / self.H)          # wanted on-screen scale at depth d
+        if lens is not None:
+            ln = float(lens)
+            D = max(60.0, self.focal * max(0.01, ln) / k - d)
+        else:
+            # a close-up comes through the lens, not by putting the camera next to the subject:
+            # a near camera bends type and cards (converging verticals,
+            # letters that lean). The camera keeps at least MIN_DIST x focal from the subject.
+            ln = self.lens.base_at(t + (dur or 0))
+            D = self.focal * max(0.01, ln) / k - d
+            if D + d < self.MIN_DIST * self.focal:
+                D = self.MIN_DIST * self.focal - d
+                ln = k * (D + d) / self.focal
+                lens = ln
+        z = self.focal / max(60.0, D)
+        rx = self.ANGLES.get(angle, angle) if isinstance(angle, str) else float(angle)
+        if isinstance(side, str):
+            sgn = -1.0 if side.startswith("-") else 1.0
+            ry = sgn * self.SIDES[side.lstrip("-")]
+        else:
+            ry = float(side)
+        if max(abs(rx), abs(ry)) > self.MAX_TILT:
+            import sys
+            print(f"[camera] shot at {t:.2f}s: angle {rx:g}/{ry:g} deg is past {self.MAX_TILT:g}: flat layers "
+                  "will read as paper (QA oblique)", file=sys.stderr)
+        cx, cy = (x0 + x1) / 2 + offset[0], (y0 + y1) / 2 + offset[1]
+        return self.cut(t, pos=(cx, cy), zoom=z, rx=float(rx), ry=ry, rotation=float(roll),
+                        lens=(ln if lens is not None else None), dur=dur, ease=ease)
+
+    def dolly(self, t0, t1, dz, ease="in_out_sine"):
+        """Move the camera forward by dz px (negative = pull back). Unlike a zoom, near layers
+        grow faster than far ones: real parallax."""
+        D0 = self.focal / max(0.01, self.zoom.base_at(t0))
+        D1 = max(60.0, D0 - dz)
+        self.zoom.key(t0, self.focal / D0).key(t1, self.focal / D1, ease)
+        return self
+
+    def orbit(self, t0, t1, ry=0.0, rx=0.0, ease="in_out_sine"):
+        """A small arc around the target on the stage plane: ry degrees around the vertical axis,
+        rx over the top. Up to ~12 degrees it reveals parallax between the planes; further round,
+        flat layers show they are paper (QA `oblique`)."""
+        self._tilt_blur = True
+        if ry:
+            r0 = self.ry.base_at(t0)
+            self.ry.key(t0, r0).key(t1, r0 + ry, ease)
+        if rx:
+            r0 = self.rx.base_at(t0)
+            self.rx.key(t0, r0).key(t1, r0 + rx, ease)
+        return self
+
+    def crane(self, t0, t1, dy, tilt=0.0, ease="in_out_sine"):
+        """Rise (dy < 0) or descend (dy > 0) while tilting by `tilt` degrees (+ = looks further
+        down): a reveal from above or a drop to a low hero angle. Keep the end angle within
+        15 degrees of head-on."""
+        self._tilt_blur = True
+        x, y = self.pos.base_at(t0)
+        self.pos.key(t0, (x, y)).key(t1, (x, y + dy), ease)
+        if tilt:
+            r0 = self.rx.base_at(t0)
+            self.rx.key(t0, r0).key(t1, r0 + tilt, ease)
+        return self
+
+    def dolly_zoom(self, t0, t1, k=1.6, ease="in_out_sine"):
+        """Vertigo: the camera moves back by k while the lens zooms in by k (or the reverse,
+        k < 1). The stage plane keeps its size, the world behind it stretches or collapses. Never
+        on type or cards in close-up: the near end of the move bends them (QA keystone)."""
+        z0, l0 = self.zoom.base_at(t0), self.lens.base_at(t0)
+        self.zoom.key(t0, z0).key(t1, z0 / k, ease)
+        self.lens.key(t0, l0).key(t1, l0 * k, ease)
+        return self
 
     def snap(self, t, dx=0.0, dy=0.0, zoom=None, dur=0.18, ease="out_expo"):
         """Quick reframe on a beat (reads as a cut inside the shot): the camera jumps by
@@ -1262,7 +1519,36 @@ class _WindowWiggle(Wiggle):
                 f"{self.amp:g}*Math.sin(Math.PI*(time-{self.t0:g})/{self.t1 - self.t0:g})) : value")
 
 
+def _differs_v(a, b):
+    if isinstance(a, tuple) and isinstance(b, tuple):
+        return any(abs(x - y) > 1e-6 for x, y in zip(a, b))
+    if isinstance(a, (int, float)) and isinstance(b, (int, float)):
+        return abs(a - b) > 1e-6
+    return a != b
+
+
 # ----------------------------------------------------------------------------- scene
+
+def _draw_tier(l, lead_bg=()):
+    """3D draw order: the backgrounds added before everything else, then grounds (floors), then
+    everything else far to near, then on_top layers (flashes, full-frame hits)."""
+    if getattr(l, "on_top", False):
+        return 3
+    if l.uid in lead_bg:
+        return 0
+    if getattr(l, "ground", False):
+        return 1
+    return 2
+
+
+def _lead_backgrounds(children):
+    out = set()
+    for c in children:
+        if c.kind != "background":
+            break
+        out.add(c.uid)
+    return out
+
 
 class Scene(Group):
     kind = "scene"
@@ -1280,6 +1566,7 @@ class Scene(Group):
         self.notes = notes
         self.camera = Camera(project.W, project.H)
         self.motion_blur = None      # {'samples': 8, 'shutter': 180} to enable for this scene
+        self.haze_cfg = None         # atmospheric perspective (haze())
 
     @property
     def t1(self):
@@ -1293,8 +1580,29 @@ class Scene(Group):
             if isinstance(l, Group):
                 for c in l.walk():
                     c.scene = self
-            self.children.append(l)
+            before = getattr(l, "insert_before", None)
+            if before is not None and before in self.children:
+                # proxies (extrusion slices, reflections) go under their source: same draw order
+                # at equal depth, and QA reads them as drawn below it
+                self.children.insert(self.children.index(before), l)
+            else:
+                self.children.append(l)
         return layers[0] if len(layers) == 1 else layers
+
+    def haze(self, color_="bg", near=400.0, far=4000.0, amount=0.85):
+        """Atmospheric perspective: layers deeper than `near` (px of depth) fade towards
+        `color_` (default the background), reaching `amount` at `far`. The cheapest depth cue
+        there is: far things are paler and closer to the air colour."""
+        self.haze_cfg = (color(color_), float(near), float(far), float(amount))
+        return self
+
+    def _haze_tint(self, depth):
+        if self.haze_cfg is None:
+            return None
+        c, near, far, amount = self.haze_cfg
+        u = max(0.0, min(1.0, (depth - near) / max(1.0, far - near)))
+        k = amount * u * u * (3 - 2 * u)
+        return None if k <= 0.004 else (c[0], c[1], c[2], k)
 
     def sfx(self, t, kind, **params):
         self.project.sfx(self.t0 + t, kind, **params)
@@ -1322,24 +1630,34 @@ class Scene(Group):
             for l in self.children:
                 l.draw(canvas, t, ctx)
             return
-        # far to near by depth; equal depths keep the order they were added (predictable)
-        layers = [l for _, l in sorted(enumerate(self.children), key=lambda il: (-il[1].depth.at(t), il[0]))]
+        # backgrounds first, then grounds (floors), then far to near by depth; equal depths keep
+        # the order they were added (predictable)
+        lead = _lead_backgrounds(self.children)
+        layers = [l for _, l in sorted(enumerate(self.children), key=lambda il: (
+            _draw_tier(il[1], lead), -il[1].depth.at(t), il[0]))]
         for l in layers:
-            if not l.visible(t):
-                continue
-            H = cam.homography(t, l)
-            if H is None:
-                continue
-            l._echo_matrix = (lambda tk, _l=l: cam.homography(tk, _l))
-            dof = 0.0
-            if cam.aperture.animated or cam.aperture.rest() > 0:
-                d = l.depth.at(t)
-                px = cam.dof_px(t, d)
-                if px > 0.35:
-                    # screen px -> the layer's local px (far layers are drawn scaled down)
-                    k = cam.focal / (cam.focal / max(0.01, cam.zoom.at(t)) + d)
-                    dof = px / max(0.05, k)
-            l.draw(canvas, t, ctx, m=H, dof=dof)
+            self.draw_layer3d(canvas, t, ctx, l)
+
+    def draw_layer3d(self, canvas, t, ctx, l):
+        """Draw one top-level layer through the camera: homography (clipped at the lens), depth
+        of field, haze. ctx.screen_matrix must be set (draw_scene does it)."""
+        if not l.visible(t):
+            return
+        cam = self.camera
+        H, near_clip = cam.homography_clip(t, l)
+        if H is None:
+            return
+        l._echo_matrix = (lambda tk, _l=l: cam.homography(tk, _l))
+        dof = 0.0
+        d = l.depth.at(t)
+        if (cam.aperture.animated or cam.aperture.rest() > 0) and not getattr(l, "own_dof", False):
+            px = cam.dof_px(t, d)
+            if px > 0.35:
+                # screen px -> the layer's local px (far layers are drawn scaled down)
+                k = cam.scale_at(t, d)
+                dof = px / max(0.05, k)
+        tint = None if (l.kind == "background" or getattr(l, "own_haze", False)) else self._haze_tint(d)
+        l.draw(canvas, t, ctx, m=H, dof=dof, tint=tint, near_clip=near_clip)
 
     def layer_matrix(self, layer, t):
         """Scene->screen matrix for a top-level layer EXCLUDING its own transform (QA)."""
@@ -1395,6 +1713,7 @@ class Project:
         self.post = {}          # global fx config: name -> params (from design.fx.enabled)
         self.fx_tracks = {}     # name -> Prop intensity over project time (e.g. glitch)
         self.motion_blur = None
+        self.blur_windows = []  # [(t0, t1, samples, shutter)]: object motion blur, project seconds
         self.meta = {}
         self._cache = {}
         snd = design.sound or {}
@@ -1463,6 +1782,15 @@ class Project:
 
     def sfx(self, t, kind, accent=False, **params):
         self.events.append(Event(self.frame_snap(t), kind, params, accent))
+        return self
+
+    def blur_window(self, t0, t1, samples=12, shutter=180.0):
+        """Real sub-frame motion blur between t0 and t1 (project seconds) where layers move
+        fast without the camera (a logo flying in, a group scaling 6x in 0.5 s, a lockup jump).
+        The camera's own moves are blurred automatically. Start a window 0.02-0.04 s after a
+        hard colour flip and end it before the next one, or that frame blends two backgrounds.
+        12-16 samples for a big pull-back, 6-8 for a short move."""
+        self.blur_windows.append((float(t0), float(t1), int(samples), float(shutter)))
         return self
 
     def fx_track(self, name):

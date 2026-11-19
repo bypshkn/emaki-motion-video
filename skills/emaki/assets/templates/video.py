@@ -2,8 +2,9 @@
 
 One continuous shot (references/motion.md section 00): ONE scene on a big canvas, a carrier
 layer that becomes each next idea, a camera that travels between ideas and glides while they are
-read, one light source (art_direction.md 5b). A list of short scenes joined by transitions is
-the slideshow this skill must not make.
+read, one light source (art_direction.md 5b), layers staged in depth and filmed from more than
+one setup (motion.md 2b). A list of short scenes joined by transitions is the slideshow this
+skill must not make; one plane with a camera sliding over it is the flat film.
 
 - Units are final-resolution pixels; scene times are seconds from the scene start.
 - Beats on the grid: P.bar(n), P.beat(n), P.snap(t).
@@ -43,6 +44,12 @@ def build():
 
     # idea 2, one frame width to the right, already alive when the camera lands
     # ...
+
+    # space (motion.md 2b): stage the ideas at three depths and film them in setups, e.g.
+    #   s.add(Floor(H * 0.8)); s.haze("bg", 700, 7000); cam.dof(aperture=9, focus=0)
+    #   dust(s, (W / 2, H / 3, 1200)); cam.shot(t, title, "close", angle="low"); cam.dolly(t, t + 2, 400)
+    #   head-on only: within 15 deg, no extruded type, no cards turned in space (QA oblique)
+    # full example: tests/space_demo/video.py
 
     P.keyframes = [(1.2, "idea 1: hero line"), (s.t0 + t2 + 1.0, "idea 2")]
     return P

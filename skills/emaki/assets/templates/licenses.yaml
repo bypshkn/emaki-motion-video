@@ -1,0 +1,47 @@
+# Rights ledger: where every external file in the film came from and why we may use it.
+# Add a row the moment a file enters the project (download, upload, a file from the client),
+# not at the end. `mv.py licenses <dir>` adds stubs for files with no row and writes
+# licenses/README.md, the pack that goes to the client with the film. QA `rights` reads this file.
+#
+# A row:
+#   files:      paths or globs from the project root ("assets/music.mp3", "assets/lots/*.jpg").
+#               System fonts: the file name ("Lato-*.ttf").
+#   kind:       music | sfx | voice | image | video | vector | logo | ui | font
+#   title, author, source (the page it came from), obtained (YYYY-MM-DD)
+#   license:    pixabay | unsplash | ofl | apache | client | permission | own | google-tts | other
+#               google-tts: the generated voice-over (mv.py tts adds the row). Ours to use commercially;
+#               terms read 2026-10-19 (references/licensing.md).
+#               pixabay / unsplash: only for files downloaded from that site (QA checks the source).
+#               client: the client owns it; proof = their written confirmation.
+#               permission: written permission from the rights holder; proof = that letter.
+#               own: made by us or by the user (their photo, their recording); say who in note.
+#               other: any other license; add license_url, review it, then set status: ok.
+#               Anything from another website (auctions, marketplaces, social networks, search
+#               results, competitors) has no license here: it stays in refs/ and never in the film.
+#   content_id: music only: yes | no | unknown (the shield icon on the Pixabay page)
+#   proof:      files in licenses/: License Certificate, page screenshot or PDF, client's email
+#   terms:      a saved copy of the source's terms in licenses/, if they matter
+#   status:     leave empty: QA computes ok | gap | blocked. Set `blocked` to stop a file,
+#               `ok` after you reviewed an `other` license.
+#   fix:        how to clear a blocked row (goes into the README to-do list)
+#   note:       anything the client should know
+#
+# Example:
+#   - files: ["assets/music.mp3", "assets/music_edit*.wav"]
+#     kind: music
+#     title: "Deep Melodic Garage"
+#     author: soundoffreedom
+#     source: https://pixabay.com/music/electronic-deep-melodic-garage-465157/
+#     license: pixabay
+#     obtained: 2026-10-10
+#     content_id: unknown
+#     proof: [pixabay-track-465157.pdf]
+#
+# Fonts that declare a free license inside the file (OFL, Apache, Ubuntu, DejaVu) need no row.
+# Sound and pictures the engine makes in code are not files and need no row. A row with
+# `files: []` records something that is not a file (screens rebuilt from the client's product,
+# review quotes), so the README asks the client to approve it.
+
+film: ""                  # the film's name for the README title, e.g. "Acme Product Film v2"
+
+items:

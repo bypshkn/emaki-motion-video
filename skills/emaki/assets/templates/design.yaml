@@ -37,6 +37,14 @@ light:                       # art_direction.md 5b: a frame without a light logi
   depth_of_field: {aperture: 0, focus: 0}                     # camera.dof(); 0 = all sharp
   accent_lives_in: ""        # where the saturated accent is spent: the moving element, the key word, the light
   why: ""
+space:                       # motion.md 2b: a film is shot in a space; QA `space` measures it
+  mode: 2.5d                 # flat (a decision, with a why) | 2.5d (layers in depth, filmed head-on, within 15 deg)
+  planes: 3                  # depth planes in a key frame: foreground, subject, background (a floor counts)
+  shot_sizes: 2              # distinct sizes over the film: wide / medium / close
+  angles: 1                  # distinct angles, small ones only: eye / high / low
+  moves: [dolly]             # dolly | truck | orbit (small arc) | crane | dolly_zoom: each one listed must happen
+  set: ""                    # the world in one line: what the floor, the air and the lamps are
+  why: ""
 motion:
   tempo: medium              # calm | medium | fast  (scales default durations)
   easing:                    # character of movement
@@ -54,6 +62,7 @@ dynamics:                    # QA measures the render against these (references/
   max_still: 1.2             # longest frozen stretch, s
   static_max: 0.12           # share of static frames
   max_hold: 0.9              # longest stretch where no element animates (a camera glide alone does not count)
+  text_pace: read            # read (default: one thought per screen, <= 7 words, 1 s + 0.4 s/word) | kinetic (1-2 words a beat, crazy speed)
   camera: {mode: glide, push: 1.05, travel: 0.45}   # glide | travel | follow; never wobble (motion.md section 2)
   grammar: []                # the 4-6 moves this video is built from
   why: ""

@@ -11,18 +11,25 @@
   mv.py strips <dir> [--at a,b] [--ref ID]    12 fps strips around the keyframes
   mv.py contact <dir> [--every 0.5] [--scale 0.5]
   mv.py qa <dir> [--video out/preview.mp4] [--final]
+  mv.py email <dir> [--width 400] [--fps 20] [--dither]  inline GIF + 720p mp4 for an email (after `final`)
+  mv.py licenses <dir>                        rights pack: stubs for unrecorded files in licenses/assets.yaml,
+                                              license snapshots, licenses/README.md for the client
   mv.py estimate <dir>
   mv.py ae <dir> [--version 24.0]             After Effects ExtendScript project + stems
   mv.py [--lib DIR] styles                    list library styles
   mv.py [--lib DIR] save-style <dir> <name>   save an approved design.yaml as a library style
   mv.py [--lib DIR] promote <dir> <module.py> keep a project engine_ext module for future videos
   mv.py voice <dir> [--cues f.srt] [--force]  word timings of the voice-over -> data/words.json
+  mv.py tts <dir> [--dry-run] [--retake 2,4 [--count 2]] [--take 2=1] [--force]
+                                              generated voice (Google Chirp 3 HD) from brief.yaml voice_script
+                                              -> assets/voice.wav, data/words.json, data/voice_phrases.json
   mv.py beats <music file>                    tempo + first beat of the user's track
   mv.py analyze-ref <video> [--crop W:H:X:Y] [--skip s] [--detail a-b,c-d] [--id NAME]
                                               reference metrics (motion + sound) + sheets; --id files it in motion-lib
 
 Project layout: brief.yaml, design.yaml, storyboard.md, video.py (build() -> Project),
-fonts/, assets/, data/, engine_ext/, out/.
+fonts/, assets/, data/, engine_ext/, licenses/ (assets.yaml: source and license of every
+external file), refs/ (reference material, never in the film), out/.
 User library (styles + engine extensions that proved useful): --lib / $MV_LIB, otherwise the
 first `motion-lib/` found walking up from the project folder. The walk stops at the home folder;
 for a project outside home it goes at most two levels up. Every command logs the library it used.
@@ -119,8 +126,10 @@ def timing_log(dirp, entry):
 
 def cmd_init(a):
     d = os.path.abspath(a.dir)
-    for sub in ("fonts", "assets", "data", "engine_ext", "out"):
+    for sub in ("fonts", "assets", "data", "engine_ext", "out", "refs"):
         os.makedirs(os.path.join(d, sub), exist_ok=True)
+    import rights
+    rights.ensure(d)                           # licenses/assets.yaml: every external file gets a row
     tpl = os.path.join(SKILL, "assets", "templates")
     if not os.path.exists(os.path.join(d, "brief.yaml")):
         s = open(os.path.join(tpl, "brief.yaml"), encoding="utf-8").read()
@@ -502,6 +511,93 @@ def cmd_still(a):
     log(out)
 
 
+def cmd_email(a):
+    """Email versions of a finished film: video never plays inside an email body (Gmail,
+    Outlook), an animated GIF does; and a 1080p final is often over Gmail's 25 MB. Writes
+    out/email/<name>_inline.gif (re-rendered without grain, which would make every pixel change
+    and the GIF ~3x larger; 96 colours, no dither; the last frame, usually the end card, is also
+    frame 1 because Outlook desktop shows only the first frame) and <name>_720p.mp4 (the final
+    re-encoded, sound kept). fps 20 or 12.5 keep GIF timing exact. Flat designs: no dither (the
+    default, smallest file); films with gradients, haze or light (dark sets): --dither --colors 160
+    against banding, at a bigger file."""
+    import subprocess
+    import tempfile
+    from engine.render import render_stills
+    from PIL import Image
+    P = load(a.dir, a.lib)
+    src = a.src or os.path.join(a.dir, "out", "final.mp4")
+    if not os.path.exists(src):
+        sys.exit(f"[email] {src} not found: run `final` first or pass --src")
+    width = a.width or (400 if P.H > P.W else 600)
+    P.post.pop("grain", None)                 # the grade, bloom and vignette stay: the GIF matches the film
+    n = int(P.duration * a.fps)
+    t0 = time.perf_counter()
+    tmp = tempfile.mkdtemp()
+    od = os.path.join(a.dir, "out", "email")
+    os.makedirs(od, exist_ok=True)
+    name = os.path.basename(a.dir.rstrip("/"))
+    gif = os.path.join(od, f"{name}_inline.gif")
+    try:
+        for b0 in range(0, n, 40):              # in batches: a long film never sits in memory whole
+            ts = [k / a.fps for k in range(b0, min(n, b0 + 40))]
+            for k, im in zip(range(b0, b0 + len(ts)), render_stills(P, ts, scale=width / P.W, ss=2, post=True)):
+                Image.fromarray(im).save(os.path.join(tmp, f"{k + 1:04d}.png"))
+        shutil.copy(os.path.join(tmp, f"{n:04d}.png"), os.path.join(tmp, "0000.png"))
+        subprocess.run(["ffmpeg", "-v", "error", "-y", "-framerate", f"{a.fps:g}", "-start_number", "0", "-i",
+                        os.path.join(tmp, "%04d.png"), "-vf",
+                        f"split[a][b];[a]palettegen=max_colors={a.colors}:stats_mode=full[p];"
+                        f"[b][p]paletteuse=dither={'bayer:bayer_scale=3' if a.dither else 'none'}:diff_mode=rectangle",
+                        "-loop", "0", gif], check=True)
+    finally:
+        shutil.rmtree(tmp, ignore_errors=True)
+    mp4 = os.path.join(od, f"{name}_720p.mp4")
+    vf = "scale=-2:1280:flags=lanczos" if P.H > P.W else ("scale=1280:-2:flags=lanczos" if P.W > P.H else "scale=720:720:flags=lanczos")
+    subprocess.run(["ffmpeg", "-v", "error", "-y", "-i", src, "-vf", vf, "-c:v", "libx264", "-profile:v", "high",
+                    "-pix_fmt", "yuv420p", "-crf", "20", "-preset", "slow", "-c:a", "aac", "-b:a", "160k",
+                    "-movflags", "+faststart", mp4], check=True)
+    gs, ms = os.path.getsize(gif) / 1e6, os.path.getsize(mp4) / 1e6
+    log(f"[email] {n} frames in {time.perf_counter() - t0:.1f}s")
+    log(f"[email] inline GIF {width}px {a.fps:g} fps, {gs:.1f} MB -> {gif}")
+    log(f"[email] attachment 720p, {ms:.1f} MB -> {mp4}")
+    if gs > 4:
+        log("[email] the GIF is heavy for an email body: try --fps 12.5 or a smaller --width")
+    if ms > 25:
+        log("[email] the mp4 is over Gmail's 25 MB: Gmail will turn it into a Drive link")
+
+
+def cmd_licenses(a):
+    """Rights pack for the handover. Scans the project (assets/, fonts/, drawn images, used fonts,
+    the track and the voice), appends a stub to licenses/assets.yaml for every file with no
+    record, copies the license snapshots the rows need, and writes licenses/README.md (English,
+    goes to the client with the film). Run it when a file enters the project and before the
+    handover. Exit code 1 while anything is blocked or unrecorded on a commercial film."""
+    import rights
+    P = load(a.dir, a.lib)
+    rights.ensure(a.dir)
+    try:
+        A = rights.audit(a.dir, P)
+    except Exception as e:
+        sys.exit(f"[licenses] licenses/assets.yaml could not be read, fix the YAML first: {e}")
+    added = rights.add_stubs(a.dir, A["missing"], A["files"])
+    if added:
+        log(f"[licenses] {added} stub row(s) added to licenses/assets.yaml for: "
+            + ", ".join(rights.group_paths(A["missing"])) + ". Fill them in, then run the command again")
+        A = rights.audit(a.dir, P)
+    copied = rights.copy_snapshots(a.dir, A)
+    if copied:
+        log("[licenses] license snapshots copied: " + ", ".join(copied))
+    readme = rights.write_readme(a.dir, P, A)
+    n = rights.summary(A)
+    log(f"[licenses] {len(A['rows'])} row(s): {n['ok']} cleared, {n['gap']} with gaps, {n['blocked']} blocked; "
+        f"{len(A['missing'])} file(s) unrecorded; {len(A['auto'])} free font family(ies) -> {readme}")
+    for r in A["rows"]:
+        if r["status"] != "ok":
+            why = r["blocked"] if r["status"] == "blocked" else r["gaps"]
+            log(f"  [{'BLOCKED' if r['status'] == 'blocked' else 'GAP'}] {rights.label(r)}: {'; '.join(why)}")
+    bad = (n["blocked"] or A["missing"]) and rights.is_commercial(a.dir)
+    sys.exit(1 if bad else 0)
+
+
 def cmd_contact(a):
     from engine.render import render_stills
     from engine.contact import sheet
@@ -717,6 +813,10 @@ def cmd_voice(a):
     from audio import voice as V
     design = yaml.safe_load(open(os.path.join(a.dir, "design.yaml"), encoding="utf-8")) or {}
     snd = design.get("sound") or {}
+    bp = os.path.join(a.dir, "brief.yaml")
+    if not a.file and os.path.exists(bp) and str((yaml.safe_load(open(bp, encoding="utf-8")) or {}).get("voice")) == "tts":
+        sys.exit("[voice] the voice is generated (brief.yaml voice: tts): `mv.py tts <dir>` writes data/words.json "
+                 "phrase by phrase, more exactly than this command")
     src = a.file or snd.get("voice")
     if not src:
         sys.exit("[voice] no voice file: set sound.voice in design.yaml or pass --file")
@@ -733,6 +833,46 @@ def cmd_voice(a):
         log(f"{w['t0']:7.2f} {w['t1']:7.2f}  {w['word']}")
     log(f"[voice] {len(words)} words -> {out}. Check them against the preview; fix a time by hand "
         "if a word lands early or late (re-runs keep the file unless --force).")
+
+
+def cmd_tts(a):
+    """Generated voice-over (audio/tts.py): one Google Chirp 3 HD request per phrase of
+    brief.yaml voice_script, only for phrases with no take yet. Every take is kept in
+    data/voice_takes/; --retake N asks for new takes of phrase N and writes out/audio/takes_pN.wav
+    to choose by ear, --take N=K switches phrase N to take K."""
+    from audio import tts as T
+    try:
+        phrases = T.plan(a.dir)
+        for spec in a.take or []:
+            n, _, k = spec.partition("=")
+            ph = next((p for p in phrases if p["n"] == int(n)), None)
+            if ph is None or not k:
+                sys.exit(f"[tts] --take {spec}: use phrase=take, e.g. --take 2=1 (phrases 1-{len(phrases)})")
+            T.select_take(a.dir, ph, int(k))
+            log(f"[tts] phrase {n}: take {k}")
+        retake = [int(x) for x in a.retake.split(",")] if a.retake else []
+        rep = T.build(a.dir, retake=retake, count=a.count, force=a.force, dry=a.dry_run, log=log)
+    except T.TTSError as e:
+        sys.exit(f"[tts] {e}")
+    if rep is None:
+        return
+    for r in rep["phrases"]:
+        flag = "" if r["from_brief"] else "  [DEMO COPY]"
+        clip = f"  [clipped {r['clipped']} samples: listen, try --retake {r['n']}]" if r["clipped"] else ""
+        log(f"  {r['n']:>2}  {r['start']:6.2f}-{r['end']:6.2f} s  {r['syl_per_s']:4.1f} syl/s  take {r['take']}/{r['takes']}  "
+            f"{r['text']}{flag}{clip}")
+    for n in retake:
+        out = os.path.join(a.dir, "out", "audio", f"takes_p{n}.wav")
+        marks = T.takes_reel(a.dir, n, out)
+        log(f"[tts] phrase {n}, every take in a row -> {out}: "
+            + ", ".join(f"take {k} at {s:.1f} s" for k, s, _ in marks)
+            + f". Pick by ear: mv.py tts <dir> --take {n}=<take>")
+    for note in rep["notes"]:
+        log(f"[tts] {note}")
+    used, limit = T.usage(a.dir)
+    count = f"{used:,} of {limit:,}" if used is not None else "unknown (no secrets/ folder found)"
+    log(f"[tts] assets/voice.wav {rep['length_s']:.1f} s, {rep['voice']}; data/words.json; characters this month: "
+        f"{count}. Generated voice, not heard by Claude: the user approves every take by ear.")
 
 
 def cmd_beats(a):
@@ -797,6 +937,10 @@ def main():
     p = sp.add_parser("styleframes"); p.add_argument("dir"); p.add_argument("--times", help="comma list of moments (s); default P.keyframes")
     p.add_argument("--ref", help="motion-lib reference id to compare with")
     p = sp.add_parser("still"); p.add_argument("dir"); p.add_argument("t"); p.add_argument("--scale", type=float, default=1.0)
+    p = sp.add_parser("email"); p.add_argument("dir"); p.add_argument("--src", help="film to re-encode (default out/final.mp4)")
+    p.add_argument("--width", type=int, help="GIF width px (default 400 vertical, 600 horizontal)"); p.add_argument("--fps", type=float, default=20.0)
+    p.add_argument("--colors", type=int, default=96); p.add_argument("--dither", action="store_true", help="ordered dither against gradient banding")
+    p = sp.add_parser("licenses"); p.add_argument("dir")
     p = sp.add_parser("contact"); p.add_argument("dir"); p.add_argument("--every", type=float, default=0.5); p.add_argument("--scale", type=float, default=0.5)
     p = sp.add_parser("strips"); p.add_argument("dir"); p.add_argument("--at", help="comma list of moments (s); default P.keyframes")
     p.add_argument("--span", type=float, default=1.0); p.add_argument("--fps", type=float, default=12.0)
@@ -812,6 +956,10 @@ def main():
     p.add_argument("--id", help="save into <motion-lib>/references/<id>/ (library intake)")
     p = sp.add_parser("voice"); p.add_argument("dir"); p.add_argument("--file"); p.add_argument("--text")
     p.add_argument("--cues", help=".srt/.vtt with phrase timings"); p.add_argument("--force", action="store_true")
+    p = sp.add_parser("tts"); p.add_argument("dir"); p.add_argument("--dry-run", action="store_true")
+    p.add_argument("--retake", help="comma list of phrase numbers: request new takes"); p.add_argument("--count", type=int, default=1)
+    p.add_argument("--take", action="append", help="N=K: phrase N uses take K (repeatable)")
+    p.add_argument("--force", action="store_true", help="rewrite data/words.json even if nothing changed")
     p = sp.add_parser("beats"); p.add_argument("file")
     p = sp.add_parser("styles")
     p = sp.add_parser("save-style"); p.add_argument("dir"); p.add_argument("name")
@@ -821,9 +969,9 @@ def main():
         if hasattr(a, k) and getattr(a, k):
             setattr(a, k, os.path.abspath(getattr(a, k)))
     {"init": cmd_init, "storyboard": cmd_storyboard, "preview": cmd_preview, "final": cmd_final,
-     "styleframes": cmd_styleframes, "still": cmd_still, "contact": cmd_contact, "strips": cmd_strips, "timeline": cmd_timeline, "qa": cmd_qa, "estimate": cmd_estimate, "ae": cmd_ae,
+     "styleframes": cmd_styleframes, "still": cmd_still, "email": cmd_email, "licenses": cmd_licenses, "contact": cmd_contact, "strips": cmd_strips, "timeline": cmd_timeline, "qa": cmd_qa, "estimate": cmd_estimate, "ae": cmd_ae,
      "styles": cmd_styles, "save-style": cmd_save_style, "promote": cmd_promote,
-     "analyze-ref": cmd_analyze_ref, "voice": cmd_voice, "beats": cmd_beats}[a.cmd](a)
+     "analyze-ref": cmd_analyze_ref, "voice": cmd_voice, "tts": cmd_tts, "beats": cmd_beats}[a.cmd](a)
 
 
 if __name__ == "__main__":

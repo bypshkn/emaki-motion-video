@@ -54,6 +54,16 @@ Chromatic aberration as a global effect is not exported (listed in README).
 
 Speed (time-remaps every scene precomp), FX Intensity, Accent Color, Text Scale.
 
+## 3D sets and camera setups (motion.md 2b)
+
+- Camera: native AE camera, orbit through the CAMERA ZOOM null (Zoom, Tilt X, Tilt Y sliders);
+  `lens` adds a Lens slider that drives the camera's Zoom property (dolly zoom = Zoom and Lens
+  against each other). Hard cuts from `camera.shot`/`cut` are HOLD keys.
+- Billboards (`face_camera()`): Auto-Orient towards the camera. A light beam turns only around
+  its vertical axis in the engine; AE turns it on both axes [APPROX].
+- Floor, light beams, dust, reflections: baked through the camera (ProRes 4444 with alpha), one
+  clip each. Haze is listed as [NOT EXPORTED]: add a fog layer or a depth-keyed Tint in AE.
+
 ## Versions
 
 Target from brief `ae_version` (default 24.0). Version-gated APIs: `setTrackMatte` (23.0+),

@@ -20,6 +20,7 @@ function warn(msg) { issues.push(msg); }
 const KeyframeInterpolationType = { LINEAR: 6612, BEZIER: 6613, HOLD: 6614 };
 const ParagraphJustification = { LEFT_JUSTIFY: 7413, CENTER_JUSTIFY: 7415, RIGHT_JUSTIFY: 7414 };
 const BlendingMode = {}; ["NORMAL","MULTIPLY","SCREEN","OVERLAY","ADD","DARKEN","LIGHTEN","COLOR_DODGE","COLOR_BURN","SOFT_LIGHT","HARD_LIGHT","DIFFERENCE","EXCLUSION","HUE","SATURATION","COLOR","LUMINOSITY"].forEach((k, i) => BlendingMode[k] = 5000 + i);
+const AutoOrientType = { NO_AUTO_ORIENT: 4212, ALONG_PATH: 4213, CAMERA_OR_POINT_OF_INTEREST: 4214, CHARACTERS_TOWARD_CAMERA: 4215 };
 const TrackMatteType = { ALPHA: 5012, ALPHA_INVERTED: 5013, LUMA: 5014, LUMA_INVERTED: 5015, NO_TRACK_MATTE: 5016 };
 const MaskMode = { NONE: 6812, ADD: 6813, SUBTRACT: 6814, INTERSECT: 6815 };
 const PropertyValueType = { NO_VALUE: 0, ThreeD_SPATIAL: 1, ThreeD: 2, TwoD_SPATIAL: 3, TwoD: 4, OneD: 5, COLOR: 6, CUSTOM_VALUE: 7, MARKER: 8, LAYER_INDEX: 9, MASK_INDEX: 10, SHAPE: 11, TEXT_DOCUMENT: 12 };
@@ -203,7 +204,7 @@ class PropertyGroup {
 // ------------------------------------------------------------------------- layers / comps
 class Layer {
   constructor(comp, type, name) { this.comp = comp; this.type = type; this._name = name || type; this.label = 0; this.enabled = true; this.startTime = 0; this.inPoint = 0; this.outPoint = comp.duration;
-    this.threeDLayer = false; this.blendingMode = BlendingMode.NORMAL; this.motionBlur = false; this.collapseTransformation = false; this.adjustmentLayer = false; this.parent = null;
+    this.threeDLayer = false; this.autoOrient = AutoOrientType.NO_AUTO_ORIENT; this.blendingMode = BlendingMode.NORMAL; this.motionBlur = false; this.collapseTransformation = false; this.adjustmentLayer = false; this.parent = null;
     this.root = new PropertyGroup("layer", "root", null); this.root.layer = this;
     this.groups = { "ADBE Transform Group": new PropertyGroup("ADBE Transform Group", "transform", this.root), "ADBE Effect Parade": new PropertyGroup("ADBE Effect Parade", "effects", this.root),
       "ADBE Mask Parade": new PropertyGroup("ADBE Mask Parade", "masks", this.root) };
@@ -261,7 +262,7 @@ const appM = { version: AEV.toFixed(1) + ".0x1", project, beginUndoGroup() {}, e
 if (AEV >= 24) appM.fonts = { getFontsByPostScriptName(n) { return [{ postScriptName: n }]; } };
 
 const sandbox = { app: appM, $: { fileName: jsxPath, writeln: (s) => {} }, File: FileM, ImportOptions, Shape, KeyframeEase, MarkerValue, TextDocument,
-  KeyframeInterpolationType, ParagraphJustification, BlendingMode, TrackMatteType, MaskMode, PropertyValueType,
+  KeyframeInterpolationType, ParagraphJustification, BlendingMode, TrackMatteType, MaskMode, PropertyValueType, AutoOrientType,
   alert: (m) => { sandbox.__alerts.push(String(m)); }, confirm: () => true, __alerts: [] };
 vm.createContext(sandbox);
 

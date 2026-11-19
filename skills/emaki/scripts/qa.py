@@ -3,7 +3,9 @@
 Checks (FAIL blocks delivery, WARN needs a look, INFO is for the storyboard):
   safe_zone      copy text inside the 8% margin (FAIL) and platform UI zones (WARN)
   overflow       a word wider than its text box (FAIL), missing glyphs (FAIL)
-  reading_time   >= max(1.2 s, 0.3 s per word) of readable time per phrase (FAIL)
+  reading_time   readable time per phrase by design.yaml dynamics.text_pace: read (default)
+                 1 s + 0.4 s per word, min 1.4 s, and up to 7 words per screen (WARN);
+                 kinetic 0.35 s for one or two words, 0.3 s per word for longer ones (FAIL)
   contrast       text vs. actual rendered background >= 4.5:1 (FAIL)
   forbidden      nothing from design.yaml fx.forbidden is used (FAIL)
   brief_copy     copy marked src='brief' matches brief.yaml texts verbatim (FAIL);
@@ -19,10 +21,23 @@ Checks (FAIL blocks delivery, WARN needs a look, INFO is for the storyboard):
                  holds where only the camera glides, uniform entrances, one easing everywhere,
                  one speed everywhere (FAIL / WARN)
   allowed        exceptions declared with layer.allow(...) and their reasons (INFO)
+  space          depth planes on screen, camera moves (dolly, small orbit, crane, truck, dolly
+                 zoom), cuts, shot sizes and angles vs design.yaml `space` (FAIL / WARN); flat film (WARN)
+  oblique        a flat layer held more than 15 deg away from head-on, or bent by a near camera
+                 (opposite edges > 1.15x): the PowerPoint 3D look (FAIL on the subject and
+                 foreground planes, WARN for far, soft backgrounds)
+  type_scale     key frames where the biggest copy line spans under half the frame (WARN)
   look           light and colour on the rendered frames: flat grey-on-grey, lifted blacks, no
                  real white, the accent missing from most of the film (WARN)
   format         duration vs brief, output resolution / fps / audio stream (FAIL)
   lint           design.yaml decisions without `why`, font fallbacks (WARN)
+  voice          generated voice (brief voice: tts): assets/voice.wav made from the current
+                 voice_script and used by the mix; a phrase past the film end (FAIL), pushed by
+                 the previous one or past its scene, faster than 7.5 syllables/s, clipped by
+                 Google (WARN); the monthly character counter (INFO, WARN above 80 %)
+  rights         every external file (assets/, fonts/, drawn images, used fonts, the track and
+                 the voice) has a source and a license in licenses/assets.yaml; on a commercial
+                 film a file with no record or a blocked row fails the final (FAIL / WARN)
 
 Usage: python3 qa.py <project_dir> [--video out/preview.mp4] [--final] [--no-render]
 """
@@ -196,8 +211,11 @@ def check_allowances(P, R):
 
 # ----------------------------------------------------------------------------- choreography
 
-AMBIENT_KINDS = {"particles", "grid_plane", "waveform", "wire3d"}
-BACKDROP_KINDS = {"background", "fill", "solid", "linear", "radial", "conic", "noise", "pattern"}
+AMBIENT_KINDS = {"particles", "grid_plane", "waveform", "wire3d", "motes", "light_beam"}
+BACKDROP_KINDS = {"background", "fill", "solid", "linear", "radial", "conic", "noise", "pattern", "floor"}
+# copies of another layer (reflections): they move with their source and are not elements of
+# their own
+PROXY_KINDS = {"reflection"}
 SIG = {"position": "move", "opacity": "fade", "scale": "scale", "rotation": "rotate", "trim_end": "draw",
        "trim_start": "draw", "trim_offset": "draw", "progress": "morph", "size": "grow", "clip": "wipe",
        "rx": "tilt", "ry": "tilt", "depth": "depth", "anchor": "move", "color_prop": "colour", "value": "count",
@@ -292,7 +310,7 @@ def _signature(c):
 
 
 def _is_element(el, P):
-    if el.kind in BACKDROP_KINDS or el.kind in AMBIENT_KINDS:
+    if el.kind in BACKDROP_KINDS or el.kind in AMBIENT_KINDS or el.kind in PROXY_KINDS:
         return False
     if isinstance(el, Text) and getattr(el, "text_role", "copy") != "copy":
         return False
@@ -353,6 +371,19 @@ def check_choreography(P, R):
                     activity.append((s.t0 + ks[i - 1].t, s.t0 + ks[i].t))
         if s.transition is not None and s.transition.dur > 0:
             activity.append((s.t0, s.t0 + s.transition.dur))
+        # a cut to a new setup is a hit; an orbit, crane or dolly zoom changes the perspective of
+        # everything in frame (a glide or a zoom only slides and scales it), so they count as action
+        for c in s.camera.cuts:
+            activity.append((s.t0 + c - 0.15, s.t0 + c + 0.35))
+        for pn, lim in (("rx", 8.0), ("ry", 8.0)):
+            ks = getattr(s.camera, pn).keys
+            for i in range(1, len(ks)):
+                if ks[i].ease.kind != "hold" and abs(ks[i].v - ks[i - 1].v) >= lim:
+                    activity.append((s.t0 + ks[i - 1].t, s.t0 + ks[i].t))
+        ks = s.camera.lens.keys
+        for i in range(1, len(ks)):
+            if ks[i].ease.kind != "hold" and max(ks[i].v, ks[i - 1].v) / max(1e-3, min(ks[i].v, ks[i - 1].v)) >= 1.15:
+                activity.append((s.t0 + ks[i - 1].t, s.t0 + ks[i].t))
     # global fx hits (glitch pulses, flashes driven by fx tracks) are actions too
     for name, p in getattr(P, "fx_tracks", {}).items():
         ks = p.keys
@@ -442,7 +473,20 @@ def check_language(P, R, brief):
                   "check the copy against the brief", layer=f"{s.name if s else 'overlay'}/{L.name}")
 
 
+def _reading_need(words, pace, phrase=False):
+    """Seconds a phrase needs on screen. `read` (default): 1 s to find it plus 0.4 s per word,
+    at least 1.4 s; viewers who do not know the product need it (viewer feedback: "you don't
+    have time to understand what's going on"). `kinetic` (dynamics.text_pace, for films built on
+    speed): one or two words may flash for 0.35 s each, longer phrases need 0.3 s per word."""
+    if pace == "kinetic":
+        if phrase:
+            return max(0.6, 0.3 * words)
+        return max(0.35, 0.3 * words) if words <= 2 else max(1.0, 0.3 * words)
+    return max(1.4, 1.0 + 0.4 * words)
+
+
 def check_text(P, R, brief, render=True, qa_scale=0.4):
+    pace = str((P.design.dynamics or {}).get("text_pace", "read")).lower()
     D = P.design
     l, tp, r, b = D.safe()
     ls, ts_, rs, bs = D.safe(strict=True)
@@ -499,11 +543,14 @@ def check_text(P, R, brief, render=True, qa_scale=0.4):
         if s is not None:
             t_out_abs = min(t_out_abs, s.t1)
         words = max(1, len(txt.split()))
-        need = max(1.2, 0.3 * words)
+        need = _reading_need(words, pace)
         readable = t_out_abs - (t_in_abs - 0.5 * max(0.0, t_in_abs - t_st_abs))
         if not in_phrase and readable + 1e-3 < need:
-            R.add("FAIL", "reading_time", f"'{short(txt)}': {readable:.2f}s readable, needs {need:.2f}s ({words} words)",
-                  t=t_in_abs, layer=name)
+            R.add("FAIL", "reading_time", f"'{short(txt)}': {readable:.2f}s readable, needs {need:.2f}s ({words} words, "
+                  f"text_pace {pace})", t=t_in_abs, layer=name)
+        if pace == "read" and words > 7 and not in_phrase:
+            R.add("WARN", "reading_time", f"'{short(txt)}': {words} words on one screen. One thought per screen, up to "
+                  "7 words; the rest goes to the voice-over or the next beat", t=t_in_abs, layer=name)
         # --- size
         sz = L.st["size"]
         sx = abs(L.scale.rest()[0])
@@ -526,7 +573,7 @@ def check_text(P, R, brief, render=True, qa_scale=0.4):
         if G.kind == "kinetic_words":
             base = (s_.t0 if s_ else 0.0) + group_offset(anc) + G.offset
             words = len(G.words)
-            need = max(1.2, 0.3 * words)
+            need = _reading_need(words, pace, phrase=True)
             span = (G.end or G.times[-1]) - G.times[0]
             if span + 1e-3 < need:
                 R.add("FAIL", "reading_time", f"kinetic phrase '{short(' '.join(G.words))}': {span:.2f}s on screen, needs "
@@ -560,6 +607,25 @@ def _box(P, s, anc, l, t):
     return (rr.left(), rr.top(), rr.right(), rr.bottom())
 
 
+def _drawn_above(s, t_abs, a, b):
+    """Is layer b drawn above layer a at time t? In a 3D scene top-level layers draw by tier
+    (backgrounds, floors, the rest) and then far to near; inside a group, and in 2D scenes, by
+    the order they were added."""
+    ka, anca, la = a
+    kb, ancb, lb = b
+    if s is None or not s.uses_3d():
+        return kb > ka
+    ta, tb = (anca[0] if anca else la), (ancb[0] if ancb else lb)
+    if ta is tb:
+        return kb > ka
+    t = t_abs - s.t0
+    kids = s.children
+    lead = core._lead_backgrounds(kids)
+    def key(x):
+        return (core._draw_tier(x, lead), -x.depth.at(t), kids.index(x) if x in kids else 0)
+    return key(tb) > key(ta)
+
+
 def check_occlusion(P, R):
     """Copy text covered by a layer drawn above it (shape, image, other text)."""
     order = draw_order(P)
@@ -578,8 +644,11 @@ def check_occlusion(P, R):
                 continue
             ta = max(1.0, (tb[2] - tb[0]) * (tb[3] - tb[1]))
             for k2, s2, anc2, X in order:
-                if k2 <= k or s2 is not s or isinstance(X, Group) or X in anc or X.kind in (
-                        "background", "comet", "line", "grid_plane", "particles", "waveform", "wire3d"):
+                if s2 is not s or not _drawn_above(s, t, (k, anc, L), (k2, anc2, X)):
+                    continue
+                if isinstance(X, Group) or X in anc or X.kind in (
+                        "background", "comet", "line", "grid_plane", "particles", "waveform", "wire3d",
+                        "floor", "motes", "light_beam") or X.kind in PROXY_KINDS:
                     continue
                 if X.mask is not None and X.mask is L:
                     continue
@@ -600,7 +669,9 @@ def measure_contrast(P, L, t, scale):
     it. Text colour comes from the layer's declared colours (antialiased edge pixels would
     under-report contrast); the background is measured with the layer hidden."""
     vis = raw_frame(P, t, scale, 2)
-    hid = raw_frame(P, t, scale, 2, hidden={L.uid})
+    # the layer's own extrusion slices are part of the letters, not the background behind them
+    own = {x.uid for _s, _a, x in chains(P) if getattr(x, "src", None) is L}
+    hid = raw_frame(P, t, scale, 2, hidden={L.uid} | own)
     diff = np.abs(vis - hid).max(axis=2)
     if diff.max() < 0.05:
         return None
@@ -729,7 +800,10 @@ def check_easing(P, R):
         R.add("WARN", "easing", "velocity jump at keyframe (motion hitch)", t=t, layer=nm)
     mb = P.motion_blur or any(s.motion_blur for s in P.scenes)
     smeared = {f"{s.name if s else 'overlay'}/{l.name}" for s, anc, l in chains(P) if any(f.kind == "smear" for f in l.fx)}
+    wins = getattr(P, "blur_windows", ())
     for nm, t, d in fast[:8]:
+        if any(w[0] - 0.05 <= t <= w[1] for w in wins):
+            continue                       # P.blur_window renders real motion blur here
         if not mb and nm not in smeared:
             R.add("WARN", "easing", f"moves {d:.0f}px/frame without motion blur (strobing risk)", t=t, layer=nm)
 
@@ -755,11 +829,18 @@ def check_camera(P, R):
         n = max(2, int(s.dur * P.fps))
         ts = np.linspace(0, s.dur, n)
         pos = np.array([cam.pos.at(t) for t in ts], float)
-        z = np.array([cam.zoom.at(t) for t in ts], float)
+        z = np.array([cam.zoom.at(t) * cam.lens.at(t) for t in ts], float)
         rot = np.array([cam.rotation.at(t) for t in ts], float)
+        orx = np.array([cam.rx.at(t) for t in ts], float)
+        ory = np.array([cam.ry.at(t) for t in ts], float)
         half = math.hypot(P.W, P.H) / 2
         vel = {"pan x": np.diff(pos[:, 0]) * z[1:], "pan y": np.diff(pos[:, 1]) * z[1:],
-               "zoom": np.diff(z) / z[1:] * half, "roll": np.radians(np.diff(rot)) * half}
+               "zoom": np.diff(z) / z[1:] * half, "roll": np.radians(np.diff(rot)) * half,
+               "orbit x": np.radians(np.diff(orx)) * half, "orbit y": np.radians(np.diff(ory)) * half}
+        # a cut is a new setup, not a move: drop the frame steps that straddle one
+        cut_idx = [i for i in range(n - 1) if any(ts[i] - 1e-6 <= c <= ts[i + 1] + 1e-6 for c in cam.cuts)]
+        for v in vel.values():
+            v[cut_idx] = 0.0
         rev = 0
         gap = max(1, int(0.25 * P.fps))
         for ax, v in vel.items():
@@ -778,6 +859,260 @@ def check_camera(P, R):
             R.add("WARN", "camera", f"{len(shakes)} camera shake(s): only for impacts the brief asks for", t=s.t0)
         if len(punches) > max(2, s.dur / 4):
             R.add("WARN", "camera", f"{len(punches)} zoom punches in {s.dur:.1f}s: frequent punches read as shake", t=s.t0)
+
+
+SPACE_DEFAULTS = {"flat": {"planes": 1, "shot_sizes": 1, "angles": 1},
+                  "2.5d": {"planes": 3, "shot_sizes": 2, "angles": 1}}
+
+
+def _clusters_1d(vals, gap):
+    """Number of groups in sorted values where neighbours closer than `gap` join one group."""
+    v = sorted(vals)
+    if not v:
+        return 0
+    n = 1
+    for a, b in zip(v, v[1:]):
+        if b - a > gap:
+            n += 1
+    return n
+
+
+def _angle_setups(samples, tol=12.0):
+    """Distinct camera orientations (rx, ry, roll) among samples, greedy with an L-inf tolerance."""
+    reps = []
+    for a in samples:
+        if not any(max(abs(a[i] - r[i]) for i in range(3)) <= tol for r in reps):
+            reps.append(a)
+    return len(reps)
+
+
+def _scene_space(P, s, step=0.1):
+    """Measure one scene: depth planes on screen, camera moves, setups."""
+    cam = s.camera
+    n = max(2, int(s.dur / step) + 1)
+    ts = [min(s.dur - 1e-3, k * step) for k in range(n)]
+    frame = skia.Rect.MakeWH(P.W, P.H)
+    planes, scales, angles, ground = [], [], [], False
+    use3d = s.uses_3d()
+    for t in ts:
+        D = cam.focal / max(0.01, cam.zoom.at(t))
+        logs = []
+        for l in s.children:
+            if l.kind in PROXY_KINDS or l.kind in AMBIENT_KINDS or l.kind == "background" or l.kind in BACKDROP_KINDS \
+                    and l.kind != "floor":
+                continue
+            if not l.visible(t) or l.opacity.at(t) < 0.05:
+                continue
+            b = l.local_bounds(t)
+            if b is None:
+                continue
+            if use3d:
+                H, _ = cam.homography_clip(t, l)
+                if H is None:
+                    continue
+            else:
+                H = l.matrix(t)
+            r = H.mapRect(skia.Rect.MakeLTRB(*b))
+            if not r.intersect(frame):
+                continue
+            if l.kind == "floor" or getattr(l, "ground", False):
+                ground = True
+                continue
+            logs.append(math.log(max(1.0, D + l.depth.at(t))))
+        planes.append(_clusters_1d(logs, math.log(1.08)))
+    # setups: the camera at the start and the end of every continuous segment (between cuts);
+    # sampling inside a move would count every in-between size and angle
+    bounds = [0.0] + sorted(c for c in cam.cuts if 0 < c < s.dur) + [s.dur]
+    moves = set()
+    med_planes = float(np.median(planes)) if planes else 0.0
+    for a, b in zip(bounds, bounds[1:]):
+        for t in (a + 1e-3, b - 2e-3):
+            scales.append(math.log(max(1e-3, cam.zoom.at(t) * cam.lens.at(t))))
+            angles.append((cam.rx.at(t), cam.ry.at(t), cam.rotation.at(t)))
+        seg = [t for t in ts if a + 1e-3 < t < b - 1e-3]
+        if len(seg) < 2:
+            continue
+        # keyed values only: a slow drift() float is not a move
+        rx = [cam.rx.base_at(t) for t in seg]
+        ry = [cam.ry.base_at(t) for t in seg]
+        zl = [cam.zoom.base_at(t) for t in seg]
+        ln = [cam.lens.base_at(t) for t in seg]
+        py = [cam.pos.base_at(t)[1] for t in seg]
+        px = [cam.pos.base_at(t)[0] for t in seg]
+        prod = [a * b for a, b in zip(zl, ln)]
+        zr, lr = max(zl) / max(1e-3, min(zl)), max(ln) / max(1e-3, min(ln))
+        if zr > 1.15 and lr > 1.15 and max(prod) / max(1e-3, min(prod)) < 1.2:
+            moves.add("dolly_zoom")
+        elif zr > 1.12:
+            moves.add("dolly" if med_planes >= 2 or ground else "zoom")
+        elif lr > 1.12:
+            moves.add("zoom")
+        if max(ry) - min(ry) > 6 or (max(rx) - min(rx) > 6 and max(py) - min(py) < 0.05 * P.H):
+            moves.add("orbit")
+        if max(py) - min(py) > 0.03 * P.H and max(rx) - min(rx) > 4:
+            moves.add("crane")
+        if math.hypot(max(px) - min(px), max(py) - min(py)) > 0.12 * P.W and (med_planes >= 2 or ground):
+            moves.add("truck")
+    return {"planes": med_planes, "ground": ground, "scales": scales, "angles": angles, "moves": moves,
+            "cuts": len([c for c in cam.cuts if 0 < c < s.dur])}
+
+
+def check_space(P, R):
+    """Is the film shot in a space or laid out on one plane? Measured from the scene graph:
+    depth planes on screen (layers whose on-screen scale differs by > 8 % under the camera, plus
+    the floor), camera moves inside each setup (dolly with parallax, orbit, crane, truck, dolly
+    zoom), cuts between setups, distinct shot sizes (x1.4 apart) and angles (12 deg apart).
+    design.yaml `space` declares the intent (motion.md 2b): a declared move that never happens
+    or too few planes FAILs (the design promised a space); too few sizes or angles WARN. Without
+    a `space` block, a film that is flat in every sense WARNs."""
+    if not P.scenes:
+        return
+    raw = (P.design.raw or {}).get("space") or {}
+    sp = {"mode": raw} if isinstance(raw, str) else dict(raw)
+    mode = str(sp.get("mode", "")).lower()
+    if mode == "3d":
+        mode = "2.5d"            # the engine is 2.5D; 3d in older designs means the same intent
+    if isinstance(sp.get("moves"), str):
+        sp["moves"] = [sp["moves"]]
+    per = [(s, _scene_space(P, s)) for s in P.scenes]
+    scales = [x for _, m in per for x in m["scales"]]
+    angles = [x for _, m in per for x in m["angles"]]
+    sizes = _clusters_1d(scales, math.log(1.4))
+    n_ang = _angle_setups(angles)
+    moves = set().union(*[m["moves"] for _, m in per])
+    cuts = sum(m["cuts"] for _, m in per)
+    w = sum(s.dur * m["planes"] for s, m in per) / max(1e-6, sum(s.dur for s, _ in per))
+    ground = any(m["ground"] for _, m in per)
+    R.add("INFO", "space", f"{w:.1f} depth planes on screen (median, time-weighted){' + a floor' if ground else ''}; "
+          f"camera moves: {', '.join(sorted(moves)) or 'none'}; {cuts} cut(s) between setups; "
+          f"{sizes} shot size(s), {n_ang} angle(s)")
+    if not mode:
+        flat = w < 1.5 and not ground and not (moves - {"zoom"}) and n_ang <= 1
+        if flat and P.duration > 6:
+            R.add("WARN", "space", "flat film: one plane, the camera only pans and zooms, one angle. It reads as a "
+                  "screen, not a shot: stage the layers in depth, give the camera a dolly/orbit/crane and 2-3 setups "
+                  "(motion.md 2b), or declare `space: {mode: flat}` in design.yaml with a why")
+        return
+    if mode == "flat":
+        R.add("INFO", "space", "flat by design (design.yaml space.mode)")
+        return
+    tgt = dict(SPACE_DEFAULTS.get(mode, SPACE_DEFAULTS["2.5d"]))
+    tgt.update({k: v for k, v in sp.items() if k in tgt})
+    planes_eff = w + (1 if ground else 0)
+    if planes_eff + 0.25 < float(tgt["planes"]):
+        R.add("FAIL", "space", f"design.yaml space.planes = {tgt['planes']}, the frames show {planes_eff:.1f} "
+              "(median depth planes on screen incl. the floor): put layers at distinct depths (foreground, subject, "
+              "background) where the camera looks")
+    for mv_ in sp.get("moves") or []:
+        if mv_ not in moves:
+            R.add("FAIL", "space", f"design.yaml space.moves promises '{mv_}', the camera never does it "
+                  f"(found: {', '.join(sorted(moves)) or 'none'})")
+    if sizes < int(tgt["shot_sizes"]):
+        R.add("WARN", "space", f"{sizes} shot size(s), design.yaml asks for {tgt['shot_sizes']}: wide / medium / close "
+              "(camera.shot or a dolly that changes the size)")
+    if n_ang < int(tgt["angles"]):
+        R.add("WARN", "space", f"{n_ang} camera angle(s), design.yaml asks for {tgt['angles']}: high, low, three-quarter "
+              "(camera.shot(angle=, side=), orbit, crane)")
+    if not (moves - {"zoom"}) and cuts == 0:
+        R.add("FAIL", "space", f"space.mode is {mode} but the camera only pans and zooms: no dolly, crane, small orbit "
+              "or cut to a new setup, so the planes never separate")
+
+
+def _keystone(cam, l, t):
+    """How much perspective bends a flat layer: the larger ratio of opposite edges of its
+    projected outline (1.0 = no bend). A plane parallel to the picture plane is never bent; a
+    small tilt seen from near bends it as much as a big tilt seen from far."""
+    b = l.local_bounds(t)
+    if b is None:
+        return 1.0
+    H = cam.homography(t, l)
+    if H is None:
+        return 1.0
+    pts = [H.mapXY(x, y) for x, y in ((b[0], b[1]), (b[2], b[1]), (b[2], b[3]), (b[0], b[3]))]
+    d = lambda a, c: math.hypot(a.x() - c.x(), a.y() - c.y())
+    top, right, bottom, left = d(pts[0], pts[1]), d(pts[1], pts[2]), d(pts[2], pts[3]), d(pts[3], pts[0])
+    r1 = max(top, bottom) / max(1e-6, min(top, bottom))
+    r2 = max(left, right) / max(1e-6, min(left, right))
+    return max(r1, r2)
+
+
+def check_type_scale(P, R):
+    """Type-led films lose their concept when the set and the camera shrink the words (one
+    film's hook: "we lost the original concept with the big type"). In the key
+    frames (P.keyframes) the biggest copy line should span at least half the frame width."""
+    kf = [t for t, *_ in (getattr(P, "keyframes", None) or [])]
+    if not kf:
+        return
+    small = []
+    for t in kf:
+        best = 0.0
+        for s, anc, L in text_layers(P):
+            if getattr(L, "text_role", "copy") != "copy":
+                continue
+            bx = _box(P, s, anc, L, t)
+            if bx is not None:
+                best = max(best, (min(bx[2], P.W) - max(bx[0], 0.0)) / P.W)
+        if best < 0.5:
+            small.append((t, best))
+    if len(small) * 2 > len(kf):
+        R.add("WARN", "type_scale", f"in {len(small)} of {len(kf)} key frames the biggest line spans under half the "
+              f"frame width (e.g. {small[0][1]:.0%} at {small[0][0]:.1f}s). If the film is type-led, the word is the "
+              "frame: 70-90 % of the width, the camera moves into it, not away from it")
+
+
+def check_oblique(P, R, step=0.1, max_deg=15.0, max_hold=0.4, max_keystone=1.15):
+    """2.5D stays head-on: a flat layer (text, card, photo, panel) turned more than 15 degrees
+    away from the picture plane, by its own rx/ry or by the camera's angle, shows that it is
+    paper. That is the PowerPoint 3D look ("from the side it already looks like a
+    PowerPoint presentation"). FAIL when held >= 0.4 s on the subject or foreground planes (depth < 800, in
+    focus), WARN for far or soft background sheets; a quick flip through that angle is a
+    transition.
+    Floors, backgrounds, beams, dust and layers declared allow('oblique', why=...) are skipped."""
+    skip = BACKDROP_KINDS | AMBIENT_KINDS | PROXY_KINDS
+    for s in P.scenes:
+        if not s.uses_3d():
+            continue
+        cam = s.camera
+        ts = np.arange(0.0, s.dur, step)
+        for l in s.children:
+            if l.kind in skip or getattr(l, "ground", False) or getattr(l, "billboard", False) or \
+                    "oblique" in getattr(l, "allowed", set()):
+                continue
+            run, worst, t_first = 0.0, 0.0, None
+            for t in ts:
+                if not l.visible(t) or l.opacity.at(t) < 0.2:
+                    run = 0.0
+                    continue
+                M = cam._view(t) @ core.layer_model(l, t)
+                n = np.cross(M[:3, 0], M[:3, 1])
+                nn = np.linalg.norm(n)
+                if nn < 1e-9:
+                    continue
+                ang = math.degrees(math.acos(min(1.0, abs(n[2]) / nn)))
+                ks = _keystone(cam, l, t)
+                if ks > max_keystone:
+                    ang = max(ang, max_deg + 0.01)        # a near camera bends the layer: same failure
+                if ang > max_deg:
+                    run += step
+                    worst = max(worst, ang)
+                    if t_first is None or run <= step + 1e-9:
+                        t_first = t if run <= step + 1e-9 else t_first
+                    if run >= max_hold:
+                        # what the eye reads (subject and foreground planes, in focus) FAILs; a far,
+                        # soft background sheet at an angle is a WARN
+                        soft = l.depth.at(t) >= 800 or cam.dof_px(t, l.depth.at(t)) > 6
+                        if ks > max_keystone:
+                            msg = (f"'{l.name}' is bent by perspective (one edge {ks:.2f}x the opposite one) for >= "
+                                   f"{max_hold:g}s: the camera is too near or too low. Close-ups through the lens "
+                                   "(camera.shot does it), no dolly zoom on type")
+                        else:
+                            msg = (f"'{l.name}' is turned {worst:.0f} deg away from the camera for >= {max_hold:g}s: a "
+                                   "flat layer seen from the side reads as PowerPoint 3D. Keep the camera and the layer "
+                                   "within 15 deg of head-on, show depth by parallax, focus and light")
+                        R.add("WARN" if soft else "FAIL", "oblique", msg, t=s.t0 + t_first, layer=f"{s.name}/{l.name}")
+                        break
+                else:
+                    run, worst = 0.0, 0.0
 
 
 def check_spectrum(P, R, mix_path):
@@ -924,6 +1259,10 @@ def check_flicker(P, R, video):
         if s.transition:
             for k in range(int(s.t0 * fps) - 1, int((s.t0 + s.transition.dur) * fps) + 2):
                 cuts.add(k)
+    for s in P.scenes:
+        for c in s.camera.cuts:
+            k = int(round((s.t0 + c) * fps))
+            cuts.update(range(k - 1, k + 2))
     for name, tr in P.fx_tracks.items():
         for k in range(len(fr)):
             if tr.at(k / fps) > 0.05:
@@ -1117,6 +1456,106 @@ def fmt_box(b):
     return "(" + ", ".join(f"{v:.0f}" for v in b) + ")"
 
 
+def check_rights(P, R, root, brief, final):
+    """Every external file has a source and a license in licenses/assets.yaml (scripts/rights.py).
+    Commercial film (brief.yaml `use`, default commercial): a file with no record or a blocked
+    row FAILs the final and WARNs the preview; open gaps WARN the final. Internal: WARN only."""
+    import rights
+    try:
+        A = rights.audit(root, P)
+    except Exception as e:                      # a broken ledger must not hide the other checks
+        R.add("FAIL" if final else "WARN", "rights", f"licenses/assets.yaml could not be read: {e}")
+        return
+    commercial = rights.is_commercial(root, brief)
+    hard = "FAIL" if (final and commercial) else "WARN"
+    for g in rights.group_paths(A["missing"]):
+        if g.startswith("refs/"):
+            R.add(hard, "rights", f"{g}: reference material is on screen. refs/ never reaches the film: "
+                                  "rebuild it in code or use a licensed file")
+            continue
+        R.add(hard, "rights", f"{g}: no record in licenses/assets.yaml (where it came from, its license). "
+                              "Run `mv.py licenses <dir>` and fill in the stub")
+    for r in A["rows"]:
+        if r["status"] == "blocked":
+            R.add(hard, "rights", f"{rights.label(r)}: {'; '.join(r['blocked'])}")
+        elif r["status"] == "gap":
+            R.add("WARN" if final else "INFO", "rights", f"{rights.label(r)}: {'; '.join(r['gaps'])}")
+        if r["item"].get("files") and not r["files"]:
+            R.add("INFO", "rights", f"ledger row '{rights.label(r)}' matches no file in the project")
+    n = rights.summary(A)
+    if A["rows"] or A["missing"]:
+        R.add("INFO", "rights", f"{'commercial' if commercial else 'internal'} film: {n['ok']} cleared, {n['gap']} with gaps, "
+                                f"{n['blocked']} blocked, {len(A['missing'])} file(s) unrecorded, {len(A['auto'])} free font family(ies)")
+    if final and commercial and (A["rows"] or A["missing"]):
+        led = os.path.join(root, "licenses", "assets.yaml")
+        rd = os.path.join(root, "licenses", "README.md")
+        if not os.path.exists(rd) or (os.path.exists(led) and os.path.getmtime(led) > os.path.getmtime(rd)):
+            R.add("WARN", "rights", "licenses/README.md is missing or older than the ledger: run `mv.py licenses <dir>` "
+                                    "before the handover")
+
+
+TTS_FAST_SYL_S = 7.5        # [ASSUMPTION] the fastest line approved in testing ran 6.6 syl/s
+
+
+def check_voice(P, R, root, brief, final):
+    """Generated voice (brief.yaml voice: tts, scripts/audio/tts.py): assets/voice.wav matches the
+    current voice_script, the mix reads it, every phrase fits before the next one, inside its
+    scene and before the end, speech rate per phrase, takes Google clipped, the monthly counter."""
+    if str(brief.get("voice")) != "tts":
+        return
+    from audio import tts as T
+    hard = "FAIL" if final else "WARN"
+    rep_p = os.path.join(root, "data", "voice_phrases.json")
+    if not os.path.exists(rep_p) or not os.path.exists(os.path.join(root, "assets", "voice.wav")):
+        R.add(hard, "voice", "brief.yaml voice: tts, but no generated voice yet: run `mv.py tts <dir>`")
+        return
+    rep = json.load(open(rep_p, encoding="utf-8"))
+    rows = rep.get("phrases") or []
+    try:
+        plan = T.plan(root)
+    except T.TTSError as e:
+        R.add(hard, "voice", f"voice_script: {e}")
+        return
+    now = [(p["key"], p["text"], p["at"]) for p in plan]
+    made = [(r["key"], r["text"], r.get("at")) for r in rows]
+    if now != made:
+        R.add(hard, "voice", "voice_script changed after the last `mv.py tts`: assets/voice.wav says the old "
+                             "script. Run `mv.py tts <dir>` (new phrases need a new take, heard by the user)")
+    snd = P.design.sound or {}
+    if snd.get("voice") != "assets/voice.wav":
+        R.add(hard, "voice", f"design.yaml sound.voice is {snd.get('voice')!r}: set it to assets/voice.wav, "
+                             "otherwise the mix has no generated voice")
+    if float(snd.get("voice_offset") or 0.0):
+        R.add("WARN", "voice", "design.yaml sound.voice_offset is not 0: assets/voice.wav already starts at 0 s")
+    scenes = [s for s in (getattr(P, "scenes", None) or [])]
+    for r in rows:
+        tag = f"phrase {r['n']} «{short(r['text'], 40)}»"
+        if r["end"] > P.duration - 0.2:
+            R.add("FAIL", "voice", f"{tag} ends at {r['end']:.2f}s, the film at {P.duration:.2f}s", t=r["start"])
+        if r.get("pushed"):
+            R.add("WARN", "voice", f"{tag} was moved {r['pushed']:.2f}s later: the previous phrase runs into its `at`",
+                  t=r["start"])
+        if len(scenes) > 1:
+            host = next((s for s in scenes if s.t0 <= r["start"] < s.t1), None)
+            if host is not None and r["end"] > host.t1 + 0.25:
+                R.add("WARN", "voice", f"{tag} starts in scene '{getattr(host, 'name', '?')}' and runs "
+                                       f"{r['end'] - host.t1:.2f}s past its end", t=r["start"])
+        if r["syl_per_s"] > TTS_FAST_SYL_S:
+            R.add("WARN", "voice", f"{tag}: {r['syl_per_s']:.1f} syllables/s, faster than any approved line "
+                                   f"({TTS_FAST_SYL_S:g}): lower its rate or cut words", t=r["start"])
+        if r.get("clipped"):
+            R.add("WARN", "voice", f"{tag}: Google returned {r['clipped']} clipped samples in take {r['take']}: "
+                                   f"listen, or `mv.py tts <dir> --retake {r['n']}`", t=r["start"])
+    if rows:
+        rates = ", ".join(f"{r['n']}: {r['syl_per_s']:.1f}" for r in rows)
+        R.add("INFO", "voice", f"generated voice {rep.get('voice')}, {len(rows)} phrase(s), syllables/s per phrase {rates}. "
+                               "Not heard by Claude: the user approves each take by ear")
+    used, limit = T.usage(root)
+    if used is not None:
+        R.add("WARN" if used > 0.8 * limit else "INFO", "voice",
+              f"Google TTS characters this month: {used:,} of {limit:,} (free tier 1M, refused above {limit:,})")
+
+
 def load_brief(root):
     import yaml
     p = os.path.join(root, "brief.yaml")
@@ -1139,6 +1578,9 @@ def run(root, video=None, final=False, render=True, P=None, out_md=None):
     check_choreography(P, R)
     check_allowances(P, R)
     check_camera(P, R)
+    check_space(P, R)
+    check_oblique(P, R)
+    check_type_scale(P, R)
     check_strokes(P, R)
     check_sound_density(P, R)
     audio_dir = os.path.join(root, "out", "audio")
@@ -1149,6 +1591,8 @@ def run(root, video=None, final=False, render=True, P=None, out_md=None):
     check_dynamics(P, R, video)
     check_look(P, R, video)
     check_format(P, R, brief, video, final)
+    check_voice(P, R, root, brief, final)
+    check_rights(P, R, root, brief, final)
     out_md = out_md or os.path.join(root, "out", "qa_final.md" if final else "qa_preview.md")
     os.makedirs(os.path.dirname(out_md), exist_ok=True)
     order = {"FAIL": 0, "WARN": 1, "INFO": 2}

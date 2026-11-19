@@ -135,6 +135,10 @@
             if (tr.rx) applyK(T.property("ADBE Rotate X"), tr.rx);
             if (tr.ry) applyK(T.property("ADBE Rotate Y"), tr.ry);
         }
+        if (tr.auto_orient) {
+            l.threeDLayer = true;
+            l.autoOrient = AutoOrientType.CAMERA_OR_POINT_OF_INTEREST;
+        }
     }
 
     function applyCommon(l, d) {
@@ -465,6 +469,13 @@
             '(function(){ var p = transform.xPosition; ' + head + ' return p - D * Math.sin(a) * Math.cos(b); })(), ' +
             '(function(){ var p = transform.yPosition; ' + head + ' return p + D * Math.sin(b); })(), 0]';
         applyK(T.property("ADBE Rotate Z"), cam.rotation);
+        if (cam.lens) {
+            // lens: focal-length multiplier at a fixed distance (dolly zoom = Zoom and Lens against each other)
+            var ln = addEffect(z, "ADBE Slider Control", "Lens");
+            applyK(ln.property(1), cam.lens);
+            c.property("ADBE Camera Options Group").property("ADBE Camera Zoom").expression =
+                cam.focal + ' * thisComp.layer("CAMERA ZOOM").effect("Lens")("Slider")';
+        }
         c.label = 4;
     }
 

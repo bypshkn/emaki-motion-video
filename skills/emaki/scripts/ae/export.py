@@ -291,12 +291,18 @@ class Exporter:
         tr["opacity"] = K(l.opacity, lambda v: max(0.0, min(100.0, v * 100)), t_off, 1, notes=self.notes, name=f"{l.name}.opacity")
         if l.depth.animated or l.depth.rest() != 0:
             tr["z"] = K(l.depth, None, t_off, 1)
-        if l.rx.animated or l.rx.rest() != 0:
+        bb = getattr(l, "billboard", False)
+        if (l.rx.animated or l.rx.rest() != 0) and bb is not True:
             tr["rx"] = K(l.rx, None, t_off, 1)
-        if l.ry.animated or l.ry.rest() != 0:
+        if (l.ry.animated or l.ry.rest() != 0) and not bb:
             tr["ry"] = K(l.ry, None, t_off, 1)
         if l.echo_cfg:
             self.notes.append(f"[NOT EXPORTED] {l.name}: echo trails (AE Echo works on layer pixels, not transforms)")
+        if getattr(l, "billboard", False):
+            tr["auto_orient"] = True
+            if l.billboard == "y":
+                self.notes.append(f"[APPROX] {l.name}: faces the camera around the vertical axis only; AE Auto-Orient "
+                                  "turns it on both axes")
         return tr
 
     def common(self, l, comp, t_off, kind, anchor_shift=(0.0, 0.0)):
@@ -839,7 +845,11 @@ class Exporter:
                     kk["expr"] = code
             comp["camera"] = {"focal": cam.focal, "x": kx, "y": ky, "zoom": K(cam.zoom, None, 0, 1),
                               "rotation": K(cam.rotation, None, 0, 1), "tilt_x": K(cam.rx, None, 0, 1),
-                              "tilt_y": K(cam.ry, None, 0, 1)}
+                              "tilt_y": K(cam.ry, None, 0, 1),
+                              "lens": K(cam.lens, None, 0, 1) if (cam.lens.animated or cam.lens.rest() != 1.0) else None}
+            if s.haze_cfg is not None:
+                self.notes.append(f"[NOT EXPORTED] {s.name}: haze (atmospheric perspective); in AE add Fill/Tint keyed "
+                                  "by layer depth or a fog layer of the background colour")
         # matte bookkeeping: layer.mask -> matte layers
         self._mattes(s, comp)
         return comp
@@ -1028,6 +1038,22 @@ def render_isolated(P, layer, path, t0, t1, ss=2):
         ctx = Ctx(P, px=ss, frame=i, t_abs=t)
         lt = t - (scene.t0 if scene else 0.0)
         top = anc[0] if anc else layer
+        ctx.screen_matrix = c.getTotalMatrix()
+        if scene is not None and not anc and scene.uses_3d():
+            # a top-level layer of a 3D scene: the same path as the render (clipped at the lens,
+            # depth of field, haze; screen-space set pieces like motes and reflections)
+            scene.draw_layer3d(c, lt, ctx, layer)
+        else:
+            _bake_draw(c, scene, anc, top, layer, lt, ctx)
+        arr = surf.makeImageSnapshot().toarray(colorType=skia.ColorType.kRGBA_8888_ColorType,
+                                               alphaType=skia.AlphaType.kUnpremul_AlphaType)
+        arr = arr.reshape(H, ss, W, ss, 4).astype(np.float32).mean(axis=(1, 3))
+        proc.stdin.write(np.clip(arr + 0.5, 0, 255).astype(np.uint8).tobytes())
+    proc.stdin.close()
+    proc.wait()
+
+
+def _bake_draw(c, scene, anc, top, layer, lt, ctx):
         if scene is not None:
             cm = scene.layer_matrix(top, lt)
             if cm is not None:
@@ -1036,12 +1062,6 @@ def render_isolated(P, layer, path, t0, t1, ss=2):
             c.concat(a.matrix(lt))
             lt -= a.offset
         layer.draw(c, lt, ctx)
-        arr = surf.makeImageSnapshot().toarray(colorType=skia.ColorType.kRGBA_8888_ColorType,
-                                               alphaType=skia.AlphaType.kUnpremul_AlphaType)
-        arr = arr.reshape(H, ss, W, ss, 4).astype(np.float32).mean(axis=(1, 3))
-        proc.stdin.write(np.clip(arr + 0.5, 0, 255).astype(np.uint8).tobytes())
-    proc.stdin.close()
-    proc.wait()
 
 
 def export(P, root, version=None, audio=None, log=print, budget=None, t_call=None):

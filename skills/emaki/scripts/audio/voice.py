@@ -108,6 +108,15 @@ def _onsets(x):
 
 
 def _syllables(word):
+    """Spoken syllables, roughly: vowel groups. Letters spelled out ("A-C-H") count one each
+    (W three), a number about 1.5 per digit ("48" is forty-eight): both read as one syllable
+    before, and the words after them landed early."""
+    core = re.sub(r"[^\w-]", "", word)
+    if re.fullmatch(r"(?:[A-Za-zА-ЯІЇЄҐ]-)+[A-Za-zА-ЯІЇЄҐ]", core):
+        return sum(3 if ch in "Ww" else 1 for ch in core if ch != "-")
+    digits = re.sub(r"\D", "", core)
+    if digits and digits == core.replace(",", "").replace(".", ""):
+        return max(1, round(1.5 * len(digits)))
     w = word.lower()
     n = 0
     prev = False

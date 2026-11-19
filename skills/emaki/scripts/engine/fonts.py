@@ -25,13 +25,23 @@ SYSTEM_DIRS = ["/usr/share/fonts", "/usr/local/share/fonts", "~/.fonts", "~/.loc
 # Ukrainian: the full alphabet (Ґ Є І Ї) and the typographic apostrophe, the usual gaps.
 CYRILLIC = ("АБВГҐДЕЄЖЗИІЇЙКЛМНОПРСТУФХЦЧШЩЬЮЯабвгґдеєжзиіїйклмнопрстуфхцчшщьюя’")
 STRICT_LANGUAGES = {"uk": CYRILLIC}
-LANGUAGE = os.environ.get("MV_LANGUAGE", "en")
+_ALIASES = {"ua": "uk", "ukr": "uk", "ukrainian": "uk", "українська": "uk", "eng": "en", "english": "en"}
+
+
+def norm_language(lang):
+    """ISO 639-1 code from what a brief may say (en, en-US, English, uk, ua, Ukrainian ...); "en" when empty."""
+    s = str(lang or "en").strip().lower()
+    s = _ALIASES.get(s, s)
+    return _ALIASES.get(s[:2], s[:2])
+
+
+LANGUAGE = norm_language(os.environ.get("MV_LANGUAGE", "en"))
 
 
 def set_language(lang):
     """On-screen language of the project (ISO 639-1, e.g. "en", "uk"); set by load_project."""
     global LANGUAGE
-    LANGUAGE = str(lang or "en").strip().lower()[:2]
+    LANGUAGE = norm_language(lang)
 FALLBACK = {"sans": "DejaVu Sans", "serif": "DejaVu Serif", "mono": "DejaVu Sans Mono"}
 EXTS = (".ttf", ".otf", ".ttc", ".otc")
 

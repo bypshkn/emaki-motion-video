@@ -14,6 +14,7 @@ Units: final-resolution pixels (1080 on the short side). Times: seconds from the
 6. Data: CSV/JSON, Counter, BarChart, LineChart, Donut
 7. UI kit (product interfaces as vectors)
 8. Camera and parallax
+8b. Space: the set (floor, haze, beams, dust, reflection) and camera setups
 9. Transitions
 10. Effects (per layer and global), motion blur
 10b. Light, material, focus
@@ -168,8 +169,62 @@ shot; `travel(t, to=(x, y), zoom, dur, ease)` to another place on a big canvas; 
 t0, t1, lag, offset, axes)` smooth tracking (baked to keys); `frame_on(t, (x0, y0, x1, y1), margin)`
 re-frame to a box. Effects for a specific beat only: `punch(t)`, `snap(t, dx, dy)`, `shake(t0, t1)`.
 `drift()` is a very slow float (period clamped to >= 16 s). QA `camera` warns on wobble.
-Give layers `depth` (px; + is farther) for parallax: scale = focal / (focal/zoom + depth), the
-same projection as an AE one-node camera. With a camera, layers draw back-to-front by depth.
+Give layers `depth` (px; + is farther) for parallax: scale = focal * lens / (focal/zoom + depth), the
+same projection as an AE one-node camera. With a camera, layers draw back-to-front by depth
+(backgrounds first, then floors, then far to near). A layer partly behind the lens is clipped at
+the near plane, not dropped, so the camera can fly past or through it.
+Cinematography (motion.md 2b): `zoom` is the camera distance (a change of zoom is a dolly with
+real parallax), `lens` the focal-length multiplier at that distance, `rx` the tilt (+ = high
+angle, the camera above looking down), `ry` the arc (+ = the camera swings to the subject's
+right), `rotation` the roll. The camera orbits a point on the stage plane (depth 0). Keep `rx`
+and `ry` within 15 degrees (head-on): flat layers seen from the side read as PowerPoint 3D and
+QA `oblique` fails them.
+```python
+cam = s.camera
+cam.shot(0.0, box_or_layer, "wide", angle="high")                  # a setup: size, angle, side (dur=0: cut)
+cam.shot(4.4, hero, "close", angle="low", side="slight")           # hard cut on the beat
+cam.shot(6.0, hero, "medium", dur=0.8, lens=1.0)                   # the same as an eased move; reset the lens
+cam.cut(t, pos=(x, y), zoom=1.4, rx=8, ry=-6, rotation=0, lens=1.0)     # absolute setup values
+cam.dolly(t0, t1, 600)            # move 600 px closer (negative: pull back)
+cam.orbit(t0, t1, ry=10)          # a small arc (<= 12 deg): the planes slide against each other
+cam.crane(t0, t1, dy=-200, tilt=8)    # rise and look down a little; dy > 0, tilt < 0: drop lower
+cam.dolly_zoom(t0, t1, k=1.6)     # vertigo: the subject keeps its size, the set stretches
+cam.project(t, x, y, z)           # world point -> (screen x, screen y, distance)
+layer.face_camera()               # billboard: keeps facing the camera
+```
+Sizes: extreme_wide, wide, full, medium, close, extreme_close (or a number: how much of the
+frame the subject fills; a layer subject's depth is taken into account). Angles: eye, high (10),
+low (-8). Sides: front, slight (8), "-slight". Cuts are recorded in `cam.cuts`: motion blur
+never blends two setups, QA counts them as hits. Write the camera in time order: a cut ends the
+move that runs through it.
+
+## 8b. Space: the set
+
+```python
+FY = 700                                                     # world height of the floor (y grows down)
+s.add(Background(Radial((W/2, H*0.38), W*0.9, [(0, "#141821"), (1, "bg")])))
+s.haze("bg", near=700, far=7000, amount=0.85)                # far layers fade into the air
+fl = s.add(Floor(FY, near="surface", bays=520))              # default: 20000 px, near edge behind the camera
+fl.pool(560, 900, 900, "accent", 0.4, squash=0.8)            # pool of light at world (x, z); returns a Prop
+s.add(LightBeam(length=FY + 420, width=1100, color_="accent", intensity=0.18, pos=(560, -420), depth=900))
+hero = s.add(Text("ГЛИБИНА", style="display", size=430, anchor="bc", pos=(W/2, FY)))   # stands on the floor
+s.add(Reflection(hero, FY, opacity=0.2, blur=5))             # the hero only
+dust(s, (W/2, 360, 1200), size=(4200, 1500, 5200), n=110)   # motes behind and in front of the subject
+cam.dof(aperture=9, focus=0)                                 # dust and the foreground open into bokeh
+```
+- `Floor(y, z=3000, size=(20000, 20000), near, far=None, horizon, lines, bays, line_color)`:
+  ground plane at world height y; fades out towards the horizon and dissolves at the projected
+  horizon line (`soft_horizon`), so it never ends on a hard edge. Drawn after the backgrounds,
+  clipped at the lens. `pool(x, z, r, color_, intensity, squash)`.
+- `s.haze(color_, near, far, amount)`: atmospheric perspective by layer depth.
+- `LightBeam(length, width, top, color_, intensity, softness, source)`: a lamp at `pos`, the beam
+  down its local y.
+- `Reflection(layer, floor_y, opacity, blur, fade)`: a top-level layer mirrored in the floor.
+- `Motes(center, size, n, radius, color_, alpha, drift, twinkle)` / `dust(s, ...)`: dust in screen
+  space through the camera, each mote at its own depth (bokeh with dof).
+- Draw order in a camera scene: the backgrounds added first, then floors, then far to near,
+  then `on_top` layers (`Flash` sets it).
+The full example: `tests/space_demo/video.py`.
 
 ## 9. Transitions (scene-to-scene, `transition=` on the incoming scene)
 
@@ -196,7 +251,12 @@ Global post fx come from `design.yaml fx.enabled` and run after downscale:
 `scanlines` (period px@1080, strength), `grain` (amount, size, luma_weighted).
 Time-varying intensity: `P.fx_track("glitch").key(t, 1.0)` or `P.pulse("glitch", t, amount)`.
 Motion blur: automatic for fast camera moves (`P.auto_blur`, on by default: 3-10 sub-frames only
-on frames where the camera travels, nothing extra on held shots). Sub-frames render without
+on frames where the camera travels or orbits, nothing extra on held shots, never across a cut).
+Fast moves of layers without a camera move (a logo flying in, a group scaling 6x in 0.5 s):
+`P.blur_window(t0, t1, samples=12)` in project seconds renders real motion blur there (6-8
+samples for a short move, 12-16 for a big pull-back; keep the window clear of hard colour
+flips). A window renders samples x 4 (full supersampling), so keep windows short. QA `easing`
+stops warning about strobing inside it. Sub-frames render without
 supersampling (`P.mb_ss = 1`): their average already smooths the moving edges, so a blurred frame
 costs about n x 1 instead of n x 4. Forced for a scene: `scene.motion_blur = {"samples": 8,
 "shutter": 180}` (or `P.motion_blur`), costs samples x render time. Per-layer streak without
@@ -227,7 +287,9 @@ layers is cheap.
 P.sfx(t_abs, "whoosh"); s.sfx(t_local, "impact", accent=True)    # accents must sit on the beat grid
 ```
 Voice-over and music track come from design.yaml (`sound.voice`, `sound.track`, see sound.md).
-Word times: `json.load(open(root + "/data/words.json"))` after `mv.py voice <dir>`, e.g.
+Word times: `json.load(open(root + "/data/words.json"))` after `mv.py voice <dir>` (the user's
+recording) or `mv.py tts <dir>` (generated voice: each word also has `phrase`, the phrase number;
+phrase times are in `data/voice_phrases.json`), e.g.
 `KineticWords([w["word"] for w in W], [w["t0"] - s.t0 for w in W], ...)`.
 Kinds: whoosh, swish, riser (ends at t), downlifter, impact/hit, sub_hit, click, type, tick, blip,
 pop, chime/notify, glitch, shimmer, beep, crash, kick. Params: `gain_db`, `pan`, kind-specific

@@ -1,0 +1,59 @@
+# Space demo: test fixture for the 3D set, camera setups and cuts. Not a style example.
+meta:
+  name: Space demo
+  style_ref: custom
+  concept: "One word on a dark stage, filmed like a product hero: a set with a floor, haze, lamps and dust."
+format:
+  aspect: "16:9"
+  fps: 30
+  duration: 8
+  platform: web
+palette:
+  bg:       {value: "#07080B", why: "near-black: light needs dark to read as light"}
+  surface:  {value: "#1A1D24", why: "the floor under the subject"}
+  text:     {value: "#F4F6FA", why: "the face of the hero word"}
+  muted:    {value: "#8A94A6", why: "labels"}
+  accent:   {value: "#2F6BFF", why: "one saturated blue: the lamp light on the set"}
+  accent_2: {value: "#9DB8FF", why: "cold lamp light"}
+type:
+  scale: {base: 0.03, ratio: 1.333, why: "test"}
+  roles:
+    display: {family: "Lato", weight: 900, step: 5, line_height: 0.95, tracking: -0.02, why: "test"}
+    title:   {family: "Lato", weight: 700, step: 2, line_height: 1.05, why: "test"}
+    caption: {family: "Lato", weight: 700, step: -1, tracking: 0.12, case: upper, why: "test"}
+grid: {columns: 12, margin: 0.08, gutter: 0.02, why: "test"}
+shape: {radius: 0.02, stroke: 0.002, why: "test"}
+light:
+  key: {from: top, color: "#9DB8FF", intensity: 0.25}
+  ground: dark concrete floor dissolving into black
+  shadows: soft
+  depth_of_field: {aperture: 10, focus: 0}
+  accent_lives_in: the lamp beams and pools, the caption
+  why: "test fixture"
+space:
+  mode: 2.5d
+  planes: 3
+  shot_sizes: 3
+  angles: 1
+  moves: [crane, dolly, orbit, truck]
+  set: "floor with bay lines, haze, two lamp beams, dust, a foreground pillar; filmed head-on"
+  why: "test fixture for the space kit"
+motion:
+  tempo: medium
+  easing: {enter: out_expo, exit: in_cubic, move: in_out_cubic, emphasis: out_back, transition: in_out_cubic}
+  durations: {micro: 0.18, short: 0.35, medium: 0.6, long: 1.1}
+  stagger: 0.04
+  transitions: [cut]
+  why: "test"
+fx:
+  enabled:
+    grain: {amount: 0.018, luma_weighted: true}
+    vignette: {strength: 0.35}
+  forbidden: []
+  why: "grain dithers the haze gradients; the vignette closes the set"
+sound:
+  genre: cinematic
+  bpm: 90
+  key: "D minor"
+  loudness: -14
+  why: "test"

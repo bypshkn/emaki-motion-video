@@ -4,6 +4,8 @@ The on-screen language comes from brief.yaml `language` (default `en`). A font q
 has every glyph the copy uses: QA `glyphs` fails any missing character. Ukrainian copy (`uk`) is
 strict before rendering too: the engine skips fonts without the full Ukrainian alphabet
 (including Ґ Є І Ї) and the typographic apostrophe ’ (U+2019, write «пам’ять», not «пам'ять»).
+Numbers follow the language: `fmt_number` and `Counter` write "1,284.5" in English and
+"1 284,5" (narrow space, decimal comma) in other languages unless `sep`/`dec` are given.
 
 Lookup order: `<project>/fonts/` -> `motion-lib/fonts/` (if you keep a library) -> system fonts
 (`setup_env.sh` prints the ones with Ukrainian coverage) -> DejaVu fallback (QA warns). External

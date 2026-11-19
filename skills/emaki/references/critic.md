@@ -8,9 +8,11 @@ the evidence and a binary rubric.
 ## When
 
 Twice, at the two gates, before the user sees anything:
-- **Gate 1 (style frames):** items 8, 10 (look promises only) and 14-15, on `out/frames/*.png`
-  next to the reference sheets. The look is cheap to fix here and expensive after animation.
-- **Gate 2 (animatic):** the whole rubric, after `mv.py preview` reports no FAIL. Fix everything
+- **Gate 1 (style frames):** items 8, 10 (look promises only), 14-15 and 16, on
+  `out/frames/*.png` next to the reference sheets. The look and the space are cheap to fix here
+  and expensive after animation.
+- **Gate 2 (animatic):** the whole rubric, after `mv.py preview` reports no FAIL; item 18 by a
+  second subagent that never sees the brief. Fix everything
   it finds in one repair pass, run it again. If the second verdict is still FAIL on items 1-4,
   the problem is the plan, not the code: go back to stage 1, do not patch.
 Never shorten or lengthen a scene to hide a defect.
@@ -82,8 +84,28 @@ F. Light and finish (art_direction.md 5b; QA `look` lines)
     the accent is on screen at every key moment. Name the frame that looks most like a UI
     screenshot, or "none".
 
+G. Space and camera (motion.md 2b; QA `space` lines)
+16. The frames are shot in a space, not laid out on one plane: at least three depth planes in
+    the key frames (foreground, subject, background) and something that says where things stand
+    (a floor, a horizon, haze, light beams, dust in the air). One plane with a camera sliding
+    over it is NO. Name the planes in the hero frame.
+17. The camera works like a cinematographer, head-on: the shot size changes (wide, medium,
+    close), the moves have depth (dolly with parallax, crane, a small arc, dolly zoom), cuts land
+    on beats and on action, and nothing is seen from the side: no extruded WordArt, no card or
+    screenshot turned in space, no photo wall on a tilted plane (that is PowerPoint 3D, NO).
+    There is one hero shot a designer would screenshot. List the setups with timestamps.
+
+H. The first-time viewer (motion.md 6b), a separate subagent
+18. Given only `out/preview_contact*.png`, `out/strips.png` and the sound plan (voice-over script
+    or "no voice"), with no brief and no storyboard, the subagent writes three lines: what the
+    film is about, who it is from, what it asks the viewer to do, and the moment it got lost, if
+    any. YES only if the three lines match `brief.goal` and nothing was lost.
+19. The eye always knows where to look: one focal point per moment, the next thing to read
+    appears where the eye already is, the lead element takes it there. The text on each screen
+    fits the pace (`dynamics.text_pace`). Name the moment with the most competing things.
+
 Last line, one sentence: would a motion designer post this, or does it read as an animated
-slide deck?
+slide deck or a flat screen recording?
 
 ## Output: out/critic.md
 
